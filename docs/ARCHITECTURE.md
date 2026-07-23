@@ -39,6 +39,23 @@ WebSocket host; nothing else differs.
    final text to the `gpt-4o` chat deployment (`temperature:0`, "output only the
    translation") and pushes a `translation` message tagged with the same `itemId`.
 
+## Two transcription transports
+
+The same 24 kHz PCM capture feeds two interchangeable transports, chosen by the UI's
+Mode switch:
+
+- **WebSocket (realtime):** binary PCM frames → `/ws/transcribe` → Azure Realtime API.
+  Lowest latency, live partials, needs a realtime deployment. See
+  [`WEBSOCKET_PROTOCOL.md`](WEBSOCKET_PROTOCOL.md).
+- **REST:** PCM wrapped into WAV files (5-second slices, or the whole recording) →
+  `POST /rest/transcribe` → Azure `/audio/transcriptions`. Works with a standard REST
+  deployment. See [`REST_API.md`](REST_API.md).
+
+Both backends implement both transports identically. The frontend keeps a separate hook
+per transport (`useTranscription` / `useRestTranscription`) over one shared capture
+(`lib/capture.ts`), and persists every session's audio to IndexedDB for replay,
+download, and full-vs-batched comparison.
+
 ## Key design decisions
 
 - **Translate on finalized segments, not partials.** Translating every partial delta

@@ -22,15 +22,24 @@ them from a dropdown in the UI.
 
 ## Features
 
-- **Realtime transcription** streamed from `gpt-4o-transcribe` over WebSocket.
-- **Live partial transcripts** — words appear as you speak, then lock in as final.
-- **Live translation** of every finalized segment into the target language via `gpt-4o`.
+- **Three transcription modes, switchable in the UI:**
+  - **Realtime (WebSocket)** — streamed from `gpt-4o-transcribe`, with live partial
+    transcripts (words appear as you speak, then lock in as final). Needs a realtime
+    deployment.
+  - **REST · 5s batches** — audio is chunked into 5-second WAVs and POSTed to the
+    `/audio/transcriptions` endpoint; results stream in near-realtime. Works with a
+    standard REST deployment.
+  - **REST · full audio** — the whole recording is transcribed in one request, so you
+    can compare full-file accuracy against the batched result.
+- **Live translation** of each segment into the target language via `gpt-4o`.
 - **Input source picker** — choose which microphone/input device to use.
-- **Input language** selection (or auto-detect) and **target language** selection,
-  changeable mid-session.
+- **Input language** (or auto-detect) and **target language** selection, changeable mid-session.
+- **Browser-stored recordings** — every session is saved in your browser (IndexedDB)
+  with **Play**, **Download** (.wav), and **Transcribe full** (re-run REST on the same
+  audio to compare) — no audio is stored server-side.
 - **Two backends, one protocol** — switch Python ⇆ .NET from the UI; identical behavior.
 - **Transcript export** — download the full session as `.txt`, `.srt`, or `.json`.
-- **Voice-activity indicator** driven by Azure server-side VAD.
+- **Voice-activity indicator** driven by Azure server-side VAD (realtime mode).
 
 ## Repository layout
 
@@ -38,7 +47,8 @@ them from a dropdown in the UI.
 .
 ├── README.md                 # you are here
 ├── docs/
-│   ├── WEBSOCKET_PROTOCOL.md  # the frontend↔backend contract (both backends obey it)
+│   ├── WEBSOCKET_PROTOCOL.md  # realtime frontend↔backend contract (both backends obey it)
+│   ├── REST_API.md            # REST /rest/transcribe contract + the two REST sub-modes
 │   ├── AZURE_SETUP.md         # create the Azure resource + deployments
 │   └── ARCHITECTURE.md        # how the pieces fit, design decisions
 ├── .env.example              # shared Azure config for both backends
@@ -136,14 +146,28 @@ frontend together.
 
 ## How it works
 
-The browser captures microphone audio, resamples it to **PCM16 / 24 kHz / mono**
-in an `AudioWorklet`, and streams it as binary WebSocket frames to the backend.
-The backend relays that audio to the Azure Realtime transcription endpoint, which
-streams back partial (`delta`) and final (`completed`) transcripts. On each
-finalized segment the backend calls the `gpt-4o` chat deployment to translate it,
-then forwards transcript and translation to the UI. The full message contract
-lives in [`docs/WEBSOCKET_PROTOCOL.md`](docs/WEBSOCKET_PROTOCOL.md) — both
-backends implement it byte-for-byte so the frontend is backend-agnostic.
+The browser captures microphone audio and resamples it to **PCM16 / 24 kHz / mono**
+in an `AudioWorklet`. From there the path depends on the mode:
+
+- **Realtime (WebSocket):** audio streams as binary WebSocket frames to the backend,
+  which relays it to the Azure Realtime endpoint and streams back partial (`delta`)
+  and final (`completed`) transcripts. Contract:
+  [`docs/WEBSOCKET_PROTOCOL.md`](docs/WEBSOCKET_PROTOCOL.md).
+- **REST (batched / full):** the PCM is wrapped into WAV files (a 5-second slice each,
+  or the whole recording) and POSTed to the backend's `/rest/transcribe`, which relays
+  to Azure's `/audio/transcriptions` endpoint. Contract:
+  [`docs/REST_API.md`](docs/REST_API.md).
+
+In every mode, each finalized segment is translated by the `gpt-4o` chat deployment and
+sent to the UI. Both backends implement both contracts identically, so the frontend is
+backend-agnostic.
+
+### Which mode for your deployment?
+
+If your Azure `gpt-4o-transcribe` deployment is the **standard REST** kind (the
+`/audio/transcriptions` endpoint), use a **REST** mode — the realtime WebSocket needs a
+realtime-capable deployment. If you have a realtime deployment, all three modes work and
+the WebSocket mode gives the lowest latency with live partials.
 
 ## Security notes
 

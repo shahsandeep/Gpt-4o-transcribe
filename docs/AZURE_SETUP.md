@@ -30,9 +30,10 @@ Copy `.env.example` to `.env` at the repo root and fill in:
 AZURE_OPENAI_ENDPOINT=https://<your-resource>.openai.azure.com
 AZURE_OPENAI_API_KEY=<your-key>
 
-# Realtime transcription
+# Transcription deployment
 AZURE_TRANSCRIBE_DEPLOYMENT=gpt-4o-transcribe
-AZURE_REALTIME_API_VERSION=2025-04-01-preview
+AZURE_REALTIME_API_VERSION=2025-04-01-preview          # realtime WebSocket mode
+AZURE_TRANSCRIBE_REST_API_VERSION=2025-04-01-preview   # REST /audio/transcriptions mode
 
 # Chat model used for translation
 AZURE_CHAT_DEPLOYMENT=gpt-4o
