@@ -19,6 +19,9 @@ public sealed class AzureOptions
 
     // --- REST transcription (audio/transcriptions) ---
     public string TranscribeRestApiVersion { get; init; } = "2025-04-01-preview";
+    // "json" (flat text) or "diarized_json" (speaker-labeled segments, for
+    // gpt-4o-transcribe-diarize). "text"/"verbose_json" also pass through.
+    public string TranscribeResponseFormat { get; init; } = "json";
 
     // --- Chat deployment used for translation ---
     public string ChatDeployment { get; init; } = "gpt-4o";
@@ -46,6 +49,7 @@ public sealed class AzureOptions
             TranscribeDeployment = Env("AZURE_TRANSCRIBE_DEPLOYMENT", "gpt-4o-transcribe"),
             RealtimeApiVersion = Env("AZURE_REALTIME_API_VERSION", "2025-04-01-preview"),
             TranscribeRestApiVersion = Env("AZURE_TRANSCRIBE_REST_API_VERSION", "2025-04-01-preview"),
+            TranscribeResponseFormat = Env("AZURE_TRANSCRIBE_RESPONSE_FORMAT", "json"),
 
             ChatDeployment = Env("AZURE_CHAT_DEPLOYMENT", "gpt-4o"),
             ChatApiVersion = Env("AZURE_CHAT_API_VERSION", "2024-10-21"),

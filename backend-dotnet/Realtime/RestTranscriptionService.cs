@@ -67,7 +67,10 @@ public sealed class RestTranscriptionService
         fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse(contentType);
         form.Add(fileContent, "file", fileName);
 
-        form.Add(new StringContent("json"), "response_format");
+        var responseFormat = string.IsNullOrWhiteSpace(_options.TranscribeResponseFormat)
+            ? "json"
+            : _options.TranscribeResponseFormat;
+        form.Add(new StringContent(responseFormat), "response_format");
 
         if (!string.IsNullOrWhiteSpace(inputLanguage) &&
             !inputLanguage.Trim().Equals("auto", StringComparison.OrdinalIgnoreCase))
@@ -115,12 +118,66 @@ public sealed class RestTranscriptionService
         return (ExtractText(responseBody), elapsedMs);
     }
 
+    /// <summary>
+    /// Turn an Azure transcription response into display text. Handles the flat
+    /// <c>json</c> shape (<c>{"text": ...}</c>) and the <c>diarized_json</c> shape
+    /// (<c>{"segments": [{"speaker": "A", "text": ...}, ...]}</c>) from
+    /// gpt-4o-transcribe-diarize. Consecutive same-speaker segments merge into one
+    /// "A: ..." line. Falls back to top-level <c>text</c> when there are no usable
+    /// segments (Azure sometimes returns only that even for diarized_json).
+    /// Behavior-identical to the Python <c>format_transcript</c>.
+    /// </summary>
     private static string ExtractText(string responseBody)
     {
         using var doc = JsonDocument.Parse(responseBody);
         var root = doc.RootElement;
 
-        if (root.TryGetProperty("text", out var text) &&
+        if (root.ValueKind == JsonValueKind.Object &&
+            root.TryGetProperty("segments", out var segments) &&
+            segments.ValueKind == JsonValueKind.Array &&
+            segments.GetArrayLength() > 0)
+        {
+            var lines = new List<string>();
+            string? curSpeaker = null;
+            var haveSpeaker = false; // distinguishes "no segment yet" from "speaker == null"
+            var parts = new List<string>();
+
+            void Flush()
+            {
+                if (parts.Count == 0) return;
+                var prefix = string.IsNullOrEmpty(curSpeaker) ? "" : $"{curSpeaker}: ";
+                lines.Add(prefix + string.Join(" ", parts));
+            }
+
+            foreach (var seg in segments.EnumerateArray())
+            {
+                if (seg.ValueKind != JsonValueKind.Object) continue;
+                var segText = seg.TryGetProperty("text", out var t) && t.ValueKind == JsonValueKind.String
+                    ? (t.GetString() ?? "").Trim()
+                    : "";
+                if (segText.Length == 0) continue;
+
+                var speaker = seg.TryGetProperty("speaker", out var sp) && sp.ValueKind == JsonValueKind.String
+                    ? sp.GetString()
+                    : null;
+
+                if (haveSpeaker && speaker != curSpeaker && parts.Count > 0)
+                {
+                    Flush();
+                    parts.Clear();
+                }
+                curSpeaker = speaker;
+                haveSpeaker = true;
+                parts.Add(segText);
+            }
+            Flush();
+
+            var joined = string.Join("\n", lines).Trim();
+            if (joined.Length > 0) return joined;
+        }
+
+        if (root.ValueKind == JsonValueKind.Object &&
+            root.TryGetProperty("text", out var text) &&
             text.ValueKind == JsonValueKind.String)
         {
             return (text.GetString() ?? "").Trim();
