@@ -48,36 +48,91 @@ them from a dropdown in the UI.
 └── frontend/                 # Vite + React + TypeScript UI
 ```
 
-## Quickstart (Docker — everything at once)
+## Quickstart (no Docker)
 
-1. **Set up Azure** — follow [`docs/AZURE_SETUP.md`](docs/AZURE_SETUP.md) to create
-   an Azure OpenAI resource with a `gpt-4o-transcribe` deployment and a `gpt-4o`
-   deployment.
-2. **Configure credentials:**
-   ```bash
-   cp .env.example .env
-   # edit .env — set AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, and the deployment names
-   ```
-3. **Run:**
-   ```bash
-   docker compose up --build
-   ```
-4. Open **http://localhost:5173**, allow microphone access, pick your languages,
-   and press **Start**. Use the backend switcher to flip between Python (:8000)
-   and .NET (:8080).
+You need **one backend** (Python *or* .NET) plus the **frontend**. Run both
+backends only if you want to flip between them with the in-app switcher. Each
+command below runs in its own terminal and keeps running.
 
-## Quickstart (run each piece by hand)
+### Prerequisites
 
-Each component has its own README with details:
+- **Python backend:** Python 3.11+
+- **.NET backend:** .NET 8 SDK
+- **Frontend:** Node 20+ (includes npm)
+
+### Step 1 — Set up Azure and credentials
+
+Follow [`docs/AZURE_SETUP.md`](docs/AZURE_SETUP.md) to create an Azure OpenAI
+resource with a `gpt-4o-transcribe` deployment and a `gpt-4o` deployment. Then:
+
+```bash
+cp .env.example .env
+# edit .env — set AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, and the deployment names
+```
+
+Both backends read this **same repo-root `.env`** automatically — you do not have
+to export anything by hand.
+
+### Step 2 — Start a backend (pick ONE)
+
+**Option A — Python (port 8000):**
+
+```bash
+cd backend-python
+python -m venv .venv
+source .venv/bin/activate            # macOS / Linux
+# .venv\Scripts\Activate.ps1         # Windows PowerShell
+pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+**Option B — .NET (port 8080):**
+
+```bash
+cd backend-dotnet
+dotnet run
+```
+
+Leave the backend running. Sanity check in another terminal:
+`curl http://localhost:8000/health` (or `:8080`) → `{"status":"ok"}`.
+
+### Step 3 — Start the frontend (port 5173)
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+### Step 4 — Use it
+
+Open **http://localhost:5173**, allow microphone access, pick your input device
+and languages, and press **Start**. In the backend switcher, select the backend
+you started (Python `:8000` or .NET `:8080`). If you only started one backend,
+select that one — the other will just fail to connect if picked.
+
+> The mic API requires a secure context. `http://localhost` counts as secure, so
+> local dev works. If you serve the frontend from a non-localhost host, use HTTPS.
+
+### Per-component docs
 
 | Component | Dev command | Port | README |
 |-----------|-------------|------|--------|
-| Python backend | `uvicorn app.main:app --reload --port 8000` | 8000 | [backend-python/README.md](backend-python/README.md) |
+| Python backend | `uvicorn app.main:app --host 0.0.0.0 --port 8000` | 8000 | [backend-python/README.md](backend-python/README.md) |
 | .NET backend | `dotnet run` | 8080 | [backend-dotnet/README.md](backend-dotnet/README.md) |
 | Frontend | `npm run dev` | 5173 | [frontend/README.md](frontend/README.md) |
 
-Both backends read the **same** repo-root `.env`. Start whichever backend(s) you
-want, start the frontend, and select the backend in the UI.
+## Quickstart (Docker, optional)
+
+If you *do* have Docker with Compose, everything runs with one command:
+
+```bash
+cp .env.example .env   # fill in Azure creds first
+docker compose up --build
+```
+
+Then open **http://localhost:5173**. This builds and runs both backends and the
+frontend together.
 
 ## How it works
 

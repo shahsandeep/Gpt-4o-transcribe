@@ -14,9 +14,12 @@ See the shared contracts:
 
 On each client WebSocket connection the backend:
 
-1. Waits for the client's `start` frame (input/target language, translate flag).
-2. Opens an upstream `ClientWebSocket` to the Azure OpenAI Realtime transcription
-   API, sends `transcription_session.update`, and emits `ready`.
+1. Opens an upstream `ClientWebSocket` to the Azure OpenAI Realtime transcription
+   API with language auto-detect, sends `transcription_session.update`, and emits
+   `ready` (per the protocol, `ready` precedes the client's `start`).
+2. On the client's `start` frame (input/target language, translate flag), stores
+   the target language and, if a specific input language was named, reconfigures
+   the upstream session for it.
 3. Relays microphone PCM16 audio (binary frames) up to Azure as
    `input_audio_buffer.append`, and streams `partial_transcript` /
    `final_transcript` / `speech_started` / `speech_stopped` back down.
@@ -33,8 +36,10 @@ On each client WebSocket connection the backend:
 
 ## Configuration
 
-All configuration is read from environment variables (the shared repo-root
-`.env`, injected in Docker via `env_file`). Defaults match the Python backend.
+All configuration is read from environment variables. When run outside Docker the
+backend **auto-loads the shared repo-root `.env`** (real environment variables
+still take priority); in Docker the values are injected via `env_file`. Defaults
+match the Python backend.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
@@ -60,9 +65,8 @@ Derived URLs (same rules as the Python backend):
 # From the repo root, copy and fill in Azure creds:
 cp .env.example .env
 
-# Load the shared env and run:
+# Run — the backend auto-loads the shared repo-root .env:
 cd backend-dotnet
-set -a && . ../.env && set +a
 dotnet restore
 dotnet run
 ```
