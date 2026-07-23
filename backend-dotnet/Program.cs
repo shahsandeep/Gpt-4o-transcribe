@@ -4,6 +4,9 @@ using TranscribeApi.Realtime;
 var builder = WebApplication.CreateBuilder(args);
 
 // --- Configuration (bound from environment) ---
+// Load the shared repo-root .env when running outside Docker (real environment
+// variables, e.g. from Docker's env_file or an exported shell, still take priority).
+DotEnv.Load();
 var azureOptions = AzureOptions.FromEnvironment();
 builder.Services.AddSingleton(azureOptions);
 
