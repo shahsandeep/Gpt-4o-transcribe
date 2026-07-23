@@ -34,7 +34,7 @@ AZURE_OPENAI_API_KEY=<your-key>
 AZURE_TRANSCRIBE_DEPLOYMENT=gpt-4o-transcribe
 AZURE_REALTIME_API_VERSION=2025-04-01-preview          # realtime WebSocket mode
 AZURE_TRANSCRIBE_REST_API_VERSION=2025-04-01-preview   # REST /audio/transcriptions mode
-AZURE_TRANSCRIBE_RESPONSE_FORMAT=json                  # or "diarized_json" for a diarize deployment
+AZURE_TRANSCRIBE_RESPONSE_FORMAT=auto                  # auto-picks diarized_json for a *-diarize deployment
 
 # Chat model used for translation
 AZURE_CHAT_DEPLOYMENT=gpt-4o
