@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     azure_transcribe_rest_api_version: str = Field(
         default="2025-04-01-preview", alias="AZURE_TRANSCRIBE_REST_API_VERSION"
     )
+    # REST response_format: "json" (flat text) or "diarized_json" (speaker-labeled
+    # segments, for gpt-4o-transcribe-diarize). "text"/"verbose_json" also pass through.
+    azure_transcribe_response_format: str = Field(
+        default="json", alias="AZURE_TRANSCRIBE_RESPONSE_FORMAT"
+    )
 
     # --- Chat deployment used for translation ---
     azure_chat_deployment: str = Field(default="gpt-4o", alias="AZURE_CHAT_DEPLOYMENT")

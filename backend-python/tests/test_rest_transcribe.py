@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from app.config import Settings
 from app.main import _parse_bool
+from app.rest_transcribe import format_transcript
 
 
 def _settings(**overrides) -> Settings:
@@ -87,3 +88,57 @@ def test_parse_bool_false_variants():
 def test_parse_bool_default_none_and_empty():
     assert _parse_bool(None) is False
     assert _parse_bool("") is False
+
+
+# ---------- cognitiveservices host + diarize deployment ----------
+
+
+def test_rest_url_cognitiveservices_host_and_diarize():
+    s = _settings(
+        AZURE_OPENAI_ENDPOINT="https://mycompany.cognitiveservices.azure.com",
+        AZURE_TRANSCRIBE_DEPLOYMENT="gpt-4o-transcribe-diarize",
+        AZURE_TRANSCRIBE_REST_API_VERSION="2025-03-01-preview",
+    )
+    assert s.rest_transcribe_url == (
+        "https://mycompany.cognitiveservices.azure.com/openai/deployments/"
+        "gpt-4o-transcribe-diarize/audio/transcriptions"
+        "?api-version=2025-03-01-preview"
+    )
+
+
+def test_response_format_default_and_override():
+    assert _settings().azure_transcribe_response_format == "json"
+    s = _settings(AZURE_TRANSCRIBE_RESPONSE_FORMAT="diarized_json")
+    assert s.azure_transcribe_response_format == "diarized_json"
+
+
+# ---------- transcript formatting (flat + diarized) ----------
+
+
+def test_format_transcript_flat_json():
+    assert format_transcript({"text": "  hello world  "}) == "hello world"
+
+
+def test_format_transcript_diarized_groups_consecutive_speakers():
+    payload = {
+        "text": "ignored fallback",
+        "segments": [
+            {"speaker": "A", "text": "Hi there."},
+            {"speaker": "A", "text": "How are you?"},
+            {"speaker": "B", "text": "Good, thanks."},
+        ],
+    }
+    assert format_transcript(payload) == "A: Hi there. How are you?\nB: Good, thanks."
+
+
+def test_format_transcript_diarized_no_speaker_labels():
+    payload = {"segments": [{"text": "one"}, {"text": "two"}]}
+    assert format_transcript(payload) == "one two"
+
+
+def test_format_transcript_falls_back_to_text_when_segments_empty():
+    assert format_transcript({"text": "fallback", "segments": []}) == "fallback"
+
+
+def test_format_transcript_missing_everything():
+    assert format_transcript({}) == ""
