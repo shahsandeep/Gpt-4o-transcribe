@@ -70,10 +70,7 @@ public sealed class RestTranscriptionService
         fileContent.Headers.ContentType = MediaTypeHeaderValue.Parse(contentType);
         form.Add(fileContent, "file", fileName);
 
-        var responseFormat = string.IsNullOrWhiteSpace(_options.TranscribeResponseFormat)
-            ? "json"
-            : _options.TranscribeResponseFormat;
-        form.Add(new StringContent(responseFormat), "response_format");
+        form.Add(new StringContent(_options.ResolvedResponseFormat), "response_format");
 
         if (!string.IsNullOrWhiteSpace(inputLanguage) &&
             !inputLanguage.Trim().Equals("auto", StringComparison.OrdinalIgnoreCase))
