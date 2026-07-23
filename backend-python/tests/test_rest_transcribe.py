@@ -106,10 +106,26 @@ def test_rest_url_cognitiveservices_host_and_diarize():
     )
 
 
-def test_response_format_default_and_override():
-    assert _settings().azure_transcribe_response_format == "json"
-    s = _settings(AZURE_TRANSCRIBE_RESPONSE_FORMAT="diarized_json")
-    assert s.azure_transcribe_response_format == "diarized_json"
+def test_response_format_auto_resolves_by_deployment():
+    # Default is "auto": diarize deployment -> diarized_json, else json.
+    assert _settings(
+        AZURE_TRANSCRIBE_DEPLOYMENT="gpt-4o-transcribe-diarize"
+    ).resolved_response_format == "diarized_json"
+    assert _settings(
+        AZURE_TRANSCRIBE_DEPLOYMENT="gpt-4o-transcribe"
+    ).resolved_response_format == "json"
+
+
+def test_response_format_explicit_overrides_auto():
+    # An explicit value wins over auto-detection either way.
+    assert _settings(
+        AZURE_TRANSCRIBE_DEPLOYMENT="gpt-4o-transcribe-diarize",
+        AZURE_TRANSCRIBE_RESPONSE_FORMAT="json",
+    ).resolved_response_format == "json"
+    assert _settings(
+        AZURE_TRANSCRIBE_DEPLOYMENT="gpt-4o-transcribe",
+        AZURE_TRANSCRIBE_RESPONSE_FORMAT="diarized_json",
+    ).resolved_response_format == "diarized_json"
 
 
 # ---------- transcript formatting (flat + diarized) ----------
@@ -169,6 +185,26 @@ def test_parse_segments_flat_json_single_turn():
 
 def test_parse_segments_empty():
     assert parse_segments({}) == []
+
+
+def test_parse_segments_real_azure_diarized_shape():
+    # Exact shape returned by gpt-4o-transcribe-diarize (extra keys ignored).
+    payload = {
+        "text": "Hello? E ai, Nils? Hmm, it's not. Nilton?",
+        "segments": [
+            {"type": "transcript.text.segment", "text": "Hello?", "speaker": "A",
+             "start": 1.6, "end": 2.16, "id": "seg_0"},
+            {"type": "transcript.text.segment", "text": "E ai, Nils?", "speaker": "B",
+             "start": 2.16, "end": 3.6, "id": "seg_1"},
+            {"type": "transcript.text.segment", "text": "Hmm,", "speaker": "A",
+             "start": 3.6, "end": 4.0, "id": "seg_2"},
+        ],
+    }
+    assert parse_segments(payload) == [
+        {"speaker": "A", "text": "Hello?"},
+        {"speaker": "B", "text": "E ai, Nils?"},
+        {"speaker": "A", "text": "Hmm,"},
+    ]
 
 
 def test_join_turns_labels_and_field():

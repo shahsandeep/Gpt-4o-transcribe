@@ -98,9 +98,7 @@ async def transcribe_audio(
     `elapsed_ms` is the wall-clock duration of the Azure call. Raises
     `TranscriptionError` on any non-2xx response.
     """
-    data: dict[str, str] = {
-        "response_format": settings.azure_transcribe_response_format or "json"
-    }
+    data: dict[str, str] = {"response_format": settings.resolved_response_format}
     if input_language and input_language.strip().lower() != "auto":
         data["language"] = input_language.strip()
 

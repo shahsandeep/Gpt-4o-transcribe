@@ -53,10 +53,11 @@ class Settings(BaseSettings):
     azure_transcribe_rest_api_version: str = Field(
         default="2025-04-01-preview", alias="AZURE_TRANSCRIBE_REST_API_VERSION"
     )
-    # REST response_format: "json" (flat text) or "diarized_json" (speaker-labeled
-    # segments, for gpt-4o-transcribe-diarize). "text"/"verbose_json" also pass through.
+    # REST response_format. "auto" (default) picks "diarized_json" when the
+    # deployment name contains "diarize", else "json". Set explicitly to
+    # "json" / "diarized_json" / "text" / "verbose_json" to override.
     azure_transcribe_response_format: str = Field(
-        default="json", alias="AZURE_TRANSCRIBE_RESPONSE_FORMAT"
+        default="auto", alias="AZURE_TRANSCRIBE_RESPONSE_FORMAT"
     )
 
     # --- Chat deployment used for translation ---
@@ -96,6 +97,23 @@ class Settings(BaseSettings):
             f"wss://{self._endpoint_host}/openai/realtime"
             f"?api-version={self.azure_realtime_api_version}"
             f"&intent=transcription"
+        )
+
+    @property
+    def resolved_response_format(self) -> str:
+        """The response_format to send to Azure, resolving "auto".
+
+        "auto" -> "diarized_json" when the deployment name contains "diarize"
+        (so gpt-4o-transcribe-diarize returns speaker labels out of the box),
+        otherwise "json". An explicit value is used verbatim.
+        """
+        fmt = (self.azure_transcribe_response_format or "auto").strip().lower()
+        if fmt and fmt != "auto":
+            return fmt
+        return (
+            "diarized_json"
+            if "diarize" in self.azure_transcribe_deployment.lower()
+            else "json"
         )
 
     @property
