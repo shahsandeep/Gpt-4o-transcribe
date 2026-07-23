@@ -5,37 +5,31 @@ import type {
   Notice,
   Segment,
   ServerMessage,
-  SessionOptions,
+  StartOptions,
+  Transcriber,
 } from '../types';
+import { backendById, wsUrlFor } from '../lib/backends';
+import { PcmCapture } from '../lib/capture';
+import { encodeWav } from '../lib/wav';
+import { newId, saveRecording } from '../lib/recordings';
 
-interface UseTranscription {
-  status: ConnectionStatus;
-  segments: Segment[];
-  speaking: boolean;
-  notice: Notice | null;
-  isActive: boolean;
-  start: (opts: SessionOptions) => Promise<void>;
-  stop: () => void;
-  /** Live target-language / translate change via the `update` message. */
-  updateTarget: (targetLanguage: string, translate: boolean) => void;
-  clearSegments: () => void;
-  dismissNotice: () => void;
-}
-
-export function useTranscription(): UseTranscription {
+/**
+ * Realtime (WebSocket) transcription: streams PCM16 to the backend, which relays
+ * to the Azure Realtime API and streams partial/final transcripts + translations
+ * back. Also accumulates the captured audio and saves it to IndexedDB on stop so
+ * it can be replayed, downloaded, or re-run through REST for comparison.
+ */
+export function useTranscription(): Transcriber {
   const [status, setStatus] = useState<ConnectionStatus>('idle');
   const [segments, setSegments] = useState<Segment[]>([]);
   const [speaking, setSpeaking] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
 
-  // Long-lived handles that must not trigger re-renders.
   const wsRef = useRef<WebSocket | null>(null);
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const workletRef = useRef<AudioWorkletNode | null>(null);
+  const captureRef = useRef<PcmCapture | null>(null);
   const startedRef = useRef(false); // true once `start` was sent (safe to stream)
-  const optsRef = useRef<SessionOptions | null>(null);
+  const optsRef = useRef<StartOptions | null>(null);
+  const savedRef = useRef(false); // guard against double-saving a recording
   const sessionStartRef = useRef<number>(0);
   const noticeSeq = useRef(0);
 
@@ -96,7 +90,6 @@ export function useTranscription(): UseTranscription {
     setSegments((prev) => {
       const idx = prev.findIndex((s) => s.itemId === itemId);
       if (idx === -1) {
-        // Translation before we saw the segment — create a placeholder.
         return [
           ...prev,
           { itemId, original: '', translation: text, partial: false, startMs: 0, endMs: null },
@@ -108,39 +101,38 @@ export function useTranscription(): UseTranscription {
     });
   }, []);
 
+  // --- recording persistence ----------------------------------------------
+
+  const saveCurrentRecording = useCallback(() => {
+    const capture = captureRef.current;
+    const opts = optsRef.current;
+    if (!capture || !capture.hasAudio || savedRef.current || !opts) return;
+    savedRef.current = true;
+    // Encode synchronously (before teardown nulls the capture), persist async.
+    const blob = encodeWav(capture.getAllChunks(), capture.sampleRate);
+    const durationMs = capture.durationMs;
+    void saveRecording({
+      id: newId(),
+      name: `Realtime · ${new Date().toLocaleTimeString()}`,
+      createdAt: Date.now(),
+      mode: 'websocket',
+      durationMs,
+      sampleRate: capture.sampleRate,
+      size: blob.size,
+      inputLanguage: opts.inputLanguage,
+      targetLanguage: opts.targetLanguage,
+      blob,
+    })
+      .then(() => opts.onRecordingSaved?.())
+      .catch(() => undefined);
+  }, []);
+
   // --- teardown ------------------------------------------------------------
 
   const teardownAudio = useCallback(() => {
     startedRef.current = false;
-    try {
-      workletRef.current?.port.close();
-    } catch {
-      /* best effort */
-    }
-    try {
-      workletRef.current?.disconnect();
-    } catch {
-      /* best effort */
-    }
-    try {
-      sourceRef.current?.disconnect();
-    } catch {
-      /* best effort */
-    }
-    streamRef.current?.getTracks().forEach((track) => {
-      try {
-        track.stop();
-      } catch {
-        /* best effort */
-      }
-    });
-    if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
-      void audioCtxRef.current.close().catch(() => undefined);
-    }
-    workletRef.current = null;
-    sourceRef.current = null;
-    streamRef.current = null;
-    audioCtxRef.current = null;
+    captureRef.current?.stop();
+    captureRef.current = null;
   }, []);
 
   const closeSocket = useCallback(() => {
@@ -167,47 +159,16 @@ export function useTranscription(): UseTranscription {
     const opts = optsRef.current;
     if (!opts) return;
 
-    const ctx = new AudioContext({ sampleRate: 24000 });
-    audioCtxRef.current = ctx;
-    // Some browsers start the context suspended until a user gesture.
-    if (ctx.state === 'suspended') {
-      await ctx.resume().catch(() => undefined);
-    }
-
-    // Vite rewrites this `new URL(..., import.meta.url)` to the hashed asset URL
-    // in both dev and build, so the worklet module resolves correctly.
-    await ctx.audioWorklet.addModule(
-      new URL('../worklets/pcm-worklet.js', import.meta.url).href,
-    );
-
-    const constraints: MediaStreamConstraints = {
-      audio: opts.deviceId
-        ? { deviceId: { exact: opts.deviceId }, channelCount: 1 }
-        : { channelCount: 1 },
-    };
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
-    streamRef.current = stream;
-
-    const source = ctx.createMediaStreamSource(stream);
-    sourceRef.current = source;
-
-    const worklet = new AudioWorkletNode(ctx, 'pcm-worklet', {
-      numberOfInputs: 1,
-      numberOfOutputs: 1,
-      channelCount: 1,
+    const capture = new PcmCapture();
+    captureRef.current = capture;
+    await capture.start({
+      deviceId: opts.deviceId,
+      onChunk: (chunk) => {
+        const ws = wsRef.current;
+        if (!startedRef.current || !ws || ws.readyState !== WebSocket.OPEN) return;
+        ws.send(chunk.buffer); // binary PCM16 frame
+      },
     });
-    workletRef.current = worklet;
-
-    worklet.port.onmessage = (e: MessageEvent<ArrayBuffer>) => {
-      const ws = wsRef.current;
-      if (!startedRef.current || !ws || ws.readyState !== WebSocket.OPEN) return;
-      ws.send(e.data); // binary PCM16 frame
-    };
-
-    source.connect(worklet);
-    // Connect to destination so the node is guaranteed to keep processing.
-    // We never write output samples, so this is silent (no mic echo).
-    worklet.connect(ctx.destination);
 
     setStatus('live');
   }, []);
@@ -258,7 +219,6 @@ export function useTranscription(): UseTranscription {
           setStatus('error');
           break;
         default:
-          // Unknown message type — ignore per forward-compat.
           break;
       }
     },
@@ -268,19 +228,20 @@ export function useTranscription(): UseTranscription {
   // --- public API ----------------------------------------------------------
 
   const start = useCallback(
-    async (opts: SessionOptions) => {
-      // Fresh session.
+    async (opts: StartOptions) => {
       closeSocket();
       teardownAudio();
       setSegments([]);
       setSpeaking(false);
+      savedRef.current = false;
       sessionStartRef.current = performance.now();
       optsRef.current = opts;
       setStatus('connecting');
 
+      const wsUrl = wsUrlFor(backendById(opts.backendId));
       let ws: WebSocket;
       try {
-        ws = new WebSocket(opts.wsUrl);
+        ws = new WebSocket(wsUrl);
       } catch (e) {
         pushNotice('error', e instanceof Error ? e.message : 'Could not open WebSocket.');
         setStatus('error');
@@ -290,7 +251,7 @@ export function useTranscription(): UseTranscription {
       wsRef.current = ws;
 
       ws.onmessage = (event: MessageEvent) => {
-        if (typeof event.data !== 'string') return; // ignore any binary from server
+        if (typeof event.data !== 'string') return;
         let parsed: ServerMessage;
         try {
           parsed = JSON.parse(event.data) as ServerMessage;
@@ -301,14 +262,14 @@ export function useTranscription(): UseTranscription {
       };
 
       ws.onerror = () => {
-        pushNotice('error', `WebSocket error connecting to ${opts.wsUrl}. Is the backend running?`);
+        pushNotice('error', `WebSocket error connecting to ${wsUrl}. Is the backend running?`);
         setStatus('error');
       };
 
       ws.onclose = (event) => {
+        saveCurrentRecording();
         teardownAudio();
         setSpeaking(false);
-        // Only surface an unexpected close; a clean stop already resets to idle.
         setStatus((prev) => {
           if (prev === 'idle' || prev === 'stopping') return 'idle';
           if (prev === 'error') return 'error';
@@ -321,16 +282,16 @@ export function useTranscription(): UseTranscription {
         wsRef.current = null;
       };
     },
-    [closeSocket, handleServerMessage, pushNotice, teardownAudio],
+    [closeSocket, handleServerMessage, pushNotice, saveCurrentRecording, teardownAudio],
   );
 
   const stop = useCallback(() => {
     setStatus('stopping');
     sendJson({ type: 'stop' });
     startedRef.current = false;
+    saveCurrentRecording();
     teardownAudio();
     setSpeaking(false);
-    // Give the backend a beat to flush, then close.
     const ws = wsRef.current;
     if (ws && ws.readyState === WebSocket.OPEN) {
       setTimeout(() => closeSocket(), 150);
@@ -338,7 +299,7 @@ export function useTranscription(): UseTranscription {
       closeSocket();
     }
     setStatus('idle');
-  }, [closeSocket, sendJson, teardownAudio]);
+  }, [closeSocket, saveCurrentRecording, sendJson, teardownAudio]);
 
   const updateTarget = useCallback(
     (targetLanguage: string, translate: boolean) => {
@@ -353,7 +314,6 @@ export function useTranscription(): UseTranscription {
   const clearSegments = useCallback(() => setSegments([]), []);
   const dismissNotice = useCallback(() => setNotice(null), []);
 
-  // Cleanup on unmount.
   useEffect(() => {
     return () => {
       closeSocket();

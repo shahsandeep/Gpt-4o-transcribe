@@ -1,10 +1,15 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Controls } from './components/Controls';
+import { Recordings } from './components/Recordings';
 import { StatusBar } from './components/StatusBar';
 import { TranscriptView } from './components/TranscriptView';
 import { useAudioDevices } from './hooks/useAudioDevices';
 import { useTranscription } from './hooks/useTranscription';
+import { useRestTranscription } from './hooks/useRestTranscription';
 import { BACKENDS, DEFAULT_BACKEND_ID, backendById, wsUrlFor } from './lib/backends';
+import { httpBaseFor } from './lib/rest';
+import { listRecordings, type RecordingMeta } from './lib/recordings';
+import type { Mode } from './types';
 import {
   downloadFile,
   exportableSegments,
@@ -24,6 +29,19 @@ export default function App() {
     error: deviceError,
   } = useAudioDevices();
 
+  const [mode, setMode] = useState<Mode>('rest-batched');
+  const [backendId, setBackendId] = useState<string>(DEFAULT_BACKEND_ID);
+  const [inputLanguage, setInputLanguage] = useState('auto');
+  const [targetLanguage, setTargetLanguage] = useState('es');
+  const [translate, setTranslate] = useState(true);
+  const [recordings, setRecordings] = useState<RecordingMeta[]>([]);
+
+  // Both pipelines exist; the active one is chosen by mode. (Hooks must run
+  // unconditionally, so we always call both — the inactive one just idles.)
+  const wsHook = useTranscription();
+  const restHook = useRestTranscription(mode === 'rest-full' ? 'rest-full' : 'rest-batched');
+  const active = mode === 'websocket' ? wsHook : restHook;
+
   const {
     status,
     segments,
@@ -35,14 +53,19 @@ export default function App() {
     updateTarget,
     clearSegments,
     dismissNotice,
-  } = useTranscription();
-
-  const [backendId, setBackendId] = useState<string>(DEFAULT_BACKEND_ID);
-  const [inputLanguage, setInputLanguage] = useState('auto');
-  const [targetLanguage, setTargetLanguage] = useState('es');
-  const [translate, setTranslate] = useState(true);
+  } = active;
 
   const backend = useMemo(() => backendById(backendId), [backendId]);
+
+  const refreshRecordings = useCallback(() => {
+    listRecordings()
+      .then(setRecordings)
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    refreshRecordings();
+  }, [refreshRecordings]);
 
   const handleStart = useCallback(() => {
     void start({
@@ -50,12 +73,11 @@ export default function App() {
       inputLanguage,
       targetLanguage,
       translate,
-      wsUrl: wsUrlFor(backend),
+      backendId,
+      onRecordingSaved: refreshRecordings,
     });
-  }, [start, selectedDeviceId, inputLanguage, targetLanguage, translate, backend]);
+  }, [start, selectedDeviceId, inputLanguage, targetLanguage, translate, backendId, refreshRecordings]);
 
-  // Live target-language change: update local state and, if a session is
-  // running, push an `update` message so the backend switches without reconnect.
   const handleTargetLanguageChange = useCallback(
     (code: string) => {
       setTargetLanguage(code);
@@ -77,14 +99,13 @@ export default function App() {
       inputLanguage,
       targetLanguage,
       translate,
-      backendLabel: backend.label,
+      backendLabel: `${backend.label} · ${mode}`,
       createdAt: new Date().toISOString(),
     }),
-    [inputLanguage, targetLanguage, translate, backend],
+    [inputLanguage, targetLanguage, translate, backend, mode],
   );
 
   const hasExport = exportableSegments(segments).length > 0;
-
   const stamp = () => new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
 
   const doExport = useCallback(
@@ -102,6 +123,9 @@ export default function App() {
     [segments, exportMeta],
   );
 
+  const target =
+    mode === 'websocket' ? wsUrlFor(backend) : `${httpBaseFor(backend)}/rest/transcribe`;
+
   return (
     <div className="app">
       <header className="app-header">
@@ -109,7 +133,9 @@ export default function App() {
           <span className="brand-mark">◎</span>
           <div>
             <h1>Live Transcribe &amp; Translate</h1>
-            <p className="subtitle">Azure GPT-4o realtime speech · Python or .NET backend</p>
+            <p className="subtitle">
+              Azure GPT-4o speech · realtime WebSocket or REST · Python or .NET backend
+            </p>
           </div>
         </div>
       </header>
@@ -130,6 +156,8 @@ export default function App() {
       <main className="layout">
         <section className="panel controls-panel">
           <Controls
+            mode={mode}
+            onModeChange={setMode}
             backends={BACKENDS}
             backendId={backendId}
             onBackendChange={setBackendId}
@@ -151,7 +179,7 @@ export default function App() {
 
           <div className="export">
             <div className="export-header">
-              <span className="field-label">Export</span>
+              <span className="field-label">Export transcript</span>
               {hasExport && !isActive && (
                 <button type="button" className="btn ghost small" onClick={clearSegments}>
                   Clear
@@ -159,28 +187,13 @@ export default function App() {
               )}
             </div>
             <div className="export-buttons">
-              <button
-                type="button"
-                className="btn ghost"
-                onClick={() => doExport('txt')}
-                disabled={!hasExport}
-              >
+              <button type="button" className="btn ghost" onClick={() => doExport('txt')} disabled={!hasExport}>
                 .txt
               </button>
-              <button
-                type="button"
-                className="btn ghost"
-                onClick={() => doExport('srt')}
-                disabled={!hasExport}
-              >
+              <button type="button" className="btn ghost" onClick={() => doExport('srt')} disabled={!hasExport}>
                 .srt
               </button>
-              <button
-                type="button"
-                className="btn ghost"
-                onClick={() => doExport('json')}
-                disabled={!hasExport}
-              >
+              <button type="button" className="btn ghost" onClick={() => doExport('json')} disabled={!hasExport}>
                 .json
               </button>
             </div>
@@ -192,9 +205,24 @@ export default function App() {
         </section>
       </main>
 
+      <section className="panel recordings-panel">
+        <div className="panel-title">
+          <span>Saved recordings</span>
+          <span className="panel-hint">stored in your browser · play, download, or run full-audio REST to compare</span>
+        </div>
+        <Recordings
+          recordings={recordings}
+          backend={backend}
+          inputLanguage={inputLanguage}
+          targetLanguage={targetLanguage}
+          translate={translate}
+          onChanged={refreshRecordings}
+        />
+      </section>
+
       <footer className="app-footer">
         <span>
-          Connected target: <code>{wsUrlFor(backend)}</code>
+          {mode === 'websocket' ? 'Streaming to' : 'Posting to'}: <code>{target}</code>
         </span>
       </footer>
     </div>

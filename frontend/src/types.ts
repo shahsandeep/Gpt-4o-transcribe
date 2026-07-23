@@ -128,10 +128,38 @@ export interface Notice {
   id: number;
 }
 
-export interface SessionOptions {
+/** Transcription mode chosen in the UI. */
+export type Mode = 'websocket' | 'rest-batched' | 'rest-full';
+
+export const MODE_LABELS: Record<Mode, string> = {
+  websocket: 'Realtime (WebSocket)',
+  'rest-batched': 'REST · 5s batches',
+  'rest-full': 'REST · full audio',
+};
+
+/** Options passed to a transcriber hook's start(). Backend-derived URLs are
+ *  built inside each hook so the UI only picks the backend + mode. */
+export interface StartOptions {
   deviceId: string | null;
   inputLanguage: string;
   targetLanguage: string;
   translate: boolean;
-  wsUrl: string;
+  /** Which backend to talk to (host/port); the hook derives ws:// or http://). */
+  backendId: string;
+  /** Called after a recording is persisted to IndexedDB (to refresh the list). */
+  onRecordingSaved?: () => void;
+}
+
+/** Common shape both the WebSocket and REST hooks expose to <App>. */
+export interface Transcriber {
+  status: ConnectionStatus;
+  segments: Segment[];
+  speaking: boolean;
+  notice: Notice | null;
+  isActive: boolean;
+  start: (opts: StartOptions) => Promise<void>;
+  stop: () => void;
+  updateTarget: (targetLanguage: string, translate: boolean) => void;
+  clearSegments: () => void;
+  dismissNotice: () => void;
 }

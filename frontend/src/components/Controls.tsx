@@ -1,8 +1,14 @@
 import type { AudioDevice } from '../hooks/useAudioDevices';
 import type { Backend } from '../lib/backends';
 import { INPUT_LANGUAGES, TARGET_LANGUAGES } from '../lib/languages';
+import { MODE_LABELS, type Mode } from '../types';
+
+const MODES: Mode[] = ['websocket', 'rest-batched', 'rest-full'];
 
 interface ControlsProps {
+  mode: Mode;
+  onModeChange: (m: Mode) => void;
+
   backends: Backend[];
   backendId: string;
   onBackendChange: (id: string) => void;
@@ -27,6 +33,8 @@ interface ControlsProps {
 
 export function Controls(props: ControlsProps) {
   const {
+    mode,
+    onModeChange,
     backends,
     backendId,
     onBackendChange,
@@ -50,6 +58,27 @@ export function Controls(props: ControlsProps) {
 
   return (
     <div className="controls">
+      <div className="controls-row">
+        <label className="field wide">
+          <span className="field-label">Mode</span>
+          <div className="mode-switch" role="radiogroup" aria-label="Transcription mode">
+            {MODES.map((m) => (
+              <button
+                key={m}
+                type="button"
+                role="radio"
+                aria-checked={mode === m}
+                className={`mode-btn ${mode === m ? 'active' : ''}`}
+                onClick={() => onModeChange(m)}
+                disabled={isActive}
+              >
+                {MODE_LABELS[m]}
+              </button>
+            ))}
+          </div>
+        </label>
+      </div>
+
       <div className="controls-row">
         <label className="field">
           <span className="field-label">Backend</span>

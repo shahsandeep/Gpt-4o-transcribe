@@ -1,11 +1,13 @@
 # Frontend — Live Transcribe & Translate
 
-React + TypeScript + Vite UI for the Azure GPT-4o realtime speech transcription
-and translation app. It captures the microphone, streams PCM16 audio at 24 kHz
-over a WebSocket, and renders live partial transcripts, finalized lines, and
-translations. It talks to **either** backend (Python `:8000` or .NET `:8080`)
-via an in-app switcher — both implement the identical protocol in
-[`../docs/WEBSOCKET_PROTOCOL.md`](../docs/WEBSOCKET_PROTOCOL.md).
+React + TypeScript + Vite UI for the Azure GPT-4o speech transcription and
+translation app. It captures the microphone at 24 kHz PCM16 and transcribes in
+one of three modes — realtime WebSocket, REST in 5-second batches, or REST
+full-audio — with live translation. It talks to **either** backend (Python
+`:8000` or .NET `:8080`) via an in-app switcher; both implement the identical
+[WebSocket](../docs/WEBSOCKET_PROTOCOL.md) and [REST](../docs/REST_API.md)
+contracts. Recordings are saved in the browser for replay, download, and
+full-audio comparison.
 
 ## Quick start (dev)
 
@@ -52,6 +54,37 @@ host in prod. Override per-backend with the `VITE_*` vars in `.env.example` if
 your backends live elsewhere. You can only switch backends while stopped — the
 control is disabled during an active session.
 
+## Transcription modes
+
+The **Mode** switch (disabled while a session is active) picks the pipeline:
+
+- **Realtime (WebSocket)** — streams PCM16 frames to `/ws/transcribe`; renders live
+  partial transcripts that promote to final. Requires a realtime Azure deployment.
+- **REST · 5s batches** — buffers ~5 seconds of audio, wraps it in a WAV, and POSTs to
+  `/rest/transcribe`. Each response appends a segment, so results arrive near-realtime.
+  Works with the standard `/audio/transcriptions` deployment.
+- **REST · full audio** — records the whole session and POSTs one WAV on stop, for a
+  single transcript with no chunk-boundary splits.
+
+All three share the same capture pipeline (`src/lib/capture.ts`) and the same
+translation. The REST client is `src/lib/rest.ts`.
+
+## Saved recordings
+
+Every session's audio is stored in the browser via **IndexedDB**
+(`src/lib/recordings.ts`), encoded as a 24 kHz mono WAV (`src/lib/wav.ts`). The
+**Saved recordings** panel lists them with:
+
+- **Play** — inline `<audio>` playback.
+- **Download** — save the `.wav`.
+- **Transcribe full** — POST the whole recording via REST and show the transcript +
+  translation, so you can compare full-audio accuracy against the 5-second batched run
+  on the *same* audio.
+- **Delete**.
+
+Nothing is uploaded except when you explicitly transcribe; recordings never leave the
+browser otherwise.
+
 ## How it works (audio pipeline)
 
 1. **Device pick** — `navigator.mediaDevices.enumerateDevices()` lists inputs
@@ -86,19 +119,25 @@ access; deny and the app surfaces the error in the banner.
 
 ```
 src/
-  App.tsx                  # top-level composition + export wiring
-  types.ts                 # protocol message types (mirror the contract)
+  App.tsx                  # top-level composition, mode selection, export wiring
+  types.ts                 # protocol + UI types (Mode, StartOptions, Transcriber)
   lib/
     backends.ts            # Python/.NET definitions + ws URL builder
+    rest.ts                # REST /rest/transcribe client + http base builder
+    capture.ts             # shared mic → PCM16 capture (used by both pipelines)
+    wav.ts                 # Int16 PCM → WAV blob encoder
+    recordings.ts          # IndexedDB store (save/list/get/delete)
     languages.ts           # ISO code → display name (input has "auto")
     export.ts              # txt / srt / json serializers + download
   hooks/
     useAudioDevices.ts     # enumerate + permission + selection
-    useTranscription.ts    # WebSocket + audio pipeline orchestration
+    useTranscription.ts    # WebSocket pipeline (streams PCM, saves recording)
+    useRestTranscription.ts # REST pipeline (batched 5s + full audio)
   worklets/
     pcm-worklet.js         # Float32 → Int16 PCM, posts ArrayBuffers
   components/
-    Controls.tsx           # backend/mic/language/translate/start-stop
+    Controls.tsx           # mode/backend/mic/language/translate/start-stop
     TranscriptView.tsx     # segment list with partial rendering + autoscroll
     StatusBar.tsx          # connection status, VAD indicator, banners
+    Recordings.tsx         # saved-recording list: play/download/transcribe/delete
 ```
