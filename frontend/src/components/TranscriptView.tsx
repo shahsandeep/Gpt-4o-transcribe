@@ -1,0 +1,50 @@
+import { useEffect, useRef } from 'react';
+import type { Segment } from '../types';
+
+interface TranscriptViewProps {
+  segments: Segment[];
+  translate: boolean;
+}
+
+export function TranscriptView({ segments, translate }: TranscriptViewProps) {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+
+  // Auto-scroll to bottom as new segments/text arrive, but only if the user is
+  // already near the bottom (don't yank the view while they scroll back).
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    if (nearBottom) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
+  }, [segments]);
+
+  if (segments.length === 0) {
+    return (
+      <div className="transcript empty" ref={scrollRef}>
+        <div className="empty-state">
+          <div className="empty-icon">🎙️</div>
+          <p>Pick a microphone and press Start. Your speech appears here live.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="transcript" ref={scrollRef}>
+      {segments.map((s) => (
+        <div key={s.itemId} className={`segment ${s.partial ? 'partial' : 'final'}`}>
+          <div className="segment-original">
+            {s.original || <span className="placeholder">…</span>}
+          </div>
+          {translate && s.translation != null && (
+            <div className="segment-translation">{s.translation}</div>
+          )}
+        </div>
+      ))}
+      <div ref={bottomRef} />
+    </div>
+  );
+}
