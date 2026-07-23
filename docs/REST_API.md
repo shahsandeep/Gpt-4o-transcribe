@@ -74,16 +74,45 @@ Content-Type: multipart/form-data
 
 ## Config
 
-One new environment variable (see [`AZURE_SETUP.md`](AZURE_SETUP.md) and
-`.env.example`):
+Two REST-specific environment variables (see [`AZURE_SETUP.md`](AZURE_SETUP.md)
+and `.env.example`):
 
 ```dotenv
 # REST audio transcription API version (may differ from the realtime one)
 AZURE_TRANSCRIBE_REST_API_VERSION=2025-04-01-preview
+
+# "json" (flat text) or "diarized_json" (speaker-labeled). See below.
+AZURE_TRANSCRIBE_RESPONSE_FORMAT=json
 ```
 
 Everything else (endpoint, deployment name, key, chat deployment for translation)
-is shared with the WebSocket mode.
+is shared with the WebSocket mode. The endpoint may be either an
+`*.openai.azure.com` or an `*.cognitiveservices.azure.com` host — the backend
+uses whatever you set in `AZURE_OPENAI_ENDPOINT`.
+
+## Speaker diarization (`gpt-4o-transcribe-diarize`)
+
+If your deployment is the **diarize** model, set:
+
+```dotenv
+AZURE_TRANSCRIBE_DEPLOYMENT=gpt-4o-transcribe-diarize
+AZURE_TRANSCRIBE_RESPONSE_FORMAT=diarized_json
+```
+
+With `diarized_json`, Azure returns `segments` each carrying a `speaker` label
+(`A`, `B`, ...) and timestamps. The backend collapses consecutive same-speaker
+segments and formats the transcript as speaker-labeled lines:
+
+```
+A: Hi there, how are you?
+B: Good thanks, and you?
+```
+
+That labeled text flows through the normal `transcript` field (and is what gets
+translated). Parsing is defensive: if Azure returns only a flat `text` field for
+a diarized request (a known inconsistency on some api-versions), the backend
+falls back to that text. With the default `AZURE_TRANSCRIBE_RESPONSE_FORMAT=json`
+the diarize model still works, just without speaker labels.
 
 ## Browser-side audio storage
 

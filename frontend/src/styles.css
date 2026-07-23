@@ -803,3 +803,11 @@ code {
   font-size: 13px;
   color: var(--red);
 }
+
+/* Preserve line breaks in speaker-diarized transcripts (A:/B: on separate lines). */
+.segment-original,
+.segment-translation,
+.rec-transcript,
+.rec-translation {
+  white-space: pre-wrap;
+}
