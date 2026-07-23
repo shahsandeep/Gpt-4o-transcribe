@@ -1,9 +1,14 @@
+# Works on Python 3.11 through 3.14.
+# Note for Python 3.14: pydantic-core (pulled by pydantic) and websockets both
+# need the versions below or newer — older releases ship no cp314 wheels and pip
+# would try to compile them from source (which fails without a toolchain). The
+# pins here all have prebuilt 3.14 wheels.
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
-websockets==14.1
+websockets==16.1.1
 httpx==0.28.1
-pydantic==2.10.4
-pydantic-settings==2.7.0
+pydantic==2.13.4
+pydantic-settings==2.14.2
 python-dotenv==1.0.1
 pytest==8.3.4
 pytest-asyncio==0.25.0
