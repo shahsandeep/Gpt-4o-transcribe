@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     azure_realtime_api_version: str = Field(
         default="2025-04-01-preview", alias="AZURE_REALTIME_API_VERSION"
     )
+    azure_transcribe_rest_api_version: str = Field(
+        default="2025-04-01-preview", alias="AZURE_TRANSCRIBE_REST_API_VERSION"
+    )
 
     # --- Chat deployment used for translation ---
     azure_chat_deployment: str = Field(default="gpt-4o", alias="AZURE_CHAT_DEPLOYMENT")
@@ -88,6 +91,19 @@ class Settings(BaseSettings):
             f"wss://{self._endpoint_host}/openai/realtime"
             f"?api-version={self.azure_realtime_api_version}"
             f"&intent=transcription"
+        )
+
+    @property
+    def rest_transcribe_url(self) -> str:
+        """Azure REST audio transcription URL.
+
+        `https://x.openai.azure.com/openai/deployments/<transcribe>/audio/
+        transcriptions?api-version=<restver>`
+        """
+        return (
+            f"https://{self._endpoint_host}/openai/deployments/"
+            f"{self.azure_transcribe_deployment}/audio/transcriptions"
+            f"?api-version={self.azure_transcribe_rest_api_version}"
         )
 
     @property

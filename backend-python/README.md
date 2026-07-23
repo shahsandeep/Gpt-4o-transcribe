@@ -18,6 +18,7 @@ base URL.
 |--------|------------------|-----------------------------------------------------|
 | GET    | `/health`        | Liveness probe. Returns `{"status": "ok"}`.         |
 | WS     | `/ws/transcribe` | One transcription session per connection.           |
+| POST   | `/rest/transcribe` | Transcribe an uploaded audio file (REST path).    |
 
 ### WebSocket messages
 
@@ -28,6 +29,38 @@ base URL.
 
 See the protocol doc for the exact shapes. `itemId` correlates a transcript with
 its translation.
+
+### REST transcription (`POST /rest/transcribe`)
+
+An independent, non-streaming path for Azure deployments that expose
+transcription over the REST `/audio/transcriptions` endpoint. The frontend
+records audio into a WAV and POSTs it; the backend relays the bytes to Azure and
+(optionally) translates the transcript. See
+[`../docs/REST_API.md`](../docs/REST_API.md) for the full contract.
+
+`Content-Type: multipart/form-data` with these fields:
+
+| Field            | Required | Description                                                       |
+|------------------|----------|-------------------------------------------------------------------|
+| `file`           | yes      | Audio file (frontend sends mono 16-bit PCM WAV @ 24 kHz).         |
+| `inputLanguage`  | no       | ISO-639-1 code of the spoken audio. Omit or send `auto` to detect. |
+| `targetLanguage` | no       | ISO-639-1 code to translate into (required when `translate=true`). |
+| `translate`      | no       | `true` / `false` (default `false`). Translates via the chat deployment. |
+
+Response `200 application/json`:
+
+```jsonc
+{
+  "transcript": "hello world",
+  "translation": "hola mundo",   // null when translate=false or transcript empty
+  "transcribeMs": 812,            // server-measured Azure transcription time
+  "translateMs": 143              // server-measured translation time (0 when skipped)
+}
+```
+
+A transcription failure returns `502` with `{"error": "..."}`. A translation
+failure is non-fatal: the transcript is still returned with `"translation": null`
+and a `"translateError"` field.
 
 ## Configuration
 
@@ -41,6 +74,7 @@ loads `../.env` and `./.env` automatically.
 | `AZURE_OPENAI_API_KEY`        | —                     | Resource key (KEY 1 or KEY 2)                 |
 | `AZURE_TRANSCRIBE_DEPLOYMENT` | `gpt-4o-transcribe`   | Realtime transcription **deployment name**    |
 | `AZURE_REALTIME_API_VERSION`  | `2025-04-01-preview`  | Realtime API version                          |
+| `AZURE_TRANSCRIBE_REST_API_VERSION` | `2025-04-01-preview` | REST `/audio/transcriptions` API version |
 | `AZURE_CHAT_DEPLOYMENT`       | `gpt-4o`              | Chat deployment used for translation          |
 | `AZURE_CHAT_API_VERSION`      | `2024-10-21`         | Chat completions API version                  |
 | `VAD_THRESHOLD`               | `0.5`                 | Server VAD sensitivity                        |
@@ -54,6 +88,8 @@ Derived at runtime:
   `wss://<resource>.openai.azure.com/openai/realtime?api-version=<ver>&intent=transcription`
 - Translation REST URL:
   `https://<resource>.openai.azure.com/openai/deployments/<chat>/chat/completions?api-version=<chatver>`
+- REST transcription URL:
+  `https://<resource>.openai.azure.com/openai/deployments/<transcribe>/audio/transcriptions?api-version=<restver>`
 
 ## Install & run (local)
 
@@ -102,8 +138,10 @@ app/
   models.py           # protocol message models
   azure_realtime.py   # upstream Azure Realtime WS client + event normalization
   translator.py       # Azure chat-completions translation + ISO→name map
+  rest_transcribe.py  # Azure REST /audio/transcriptions client
   session.py          # per-connection orchestration (client ↔ Azure relay)
-  main.py             # FastAPI app: /health + /ws/transcribe, CORS
+  main.py             # FastAPI app: /health + /ws/transcribe + /rest/transcribe, CORS
 tests/
-  test_protocol.py    # offline unit tests
+  test_protocol.py       # offline unit tests (realtime + translation)
+  test_rest_transcribe.py # offline unit tests (REST URL + flag parsing)
 ```

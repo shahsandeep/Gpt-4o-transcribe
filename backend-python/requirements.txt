@@ -4,6 +4,7 @@
 # would try to compile them from source (which fails without a toolchain). The
 # pins here all have prebuilt 3.14 wheels.
 fastapi==0.115.6
+python-multipart==0.0.20
 uvicorn[standard]==0.34.0
 websockets==16.1.1
 httpx==0.28.1
