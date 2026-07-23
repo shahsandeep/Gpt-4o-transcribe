@@ -1,0 +1,31 @@
+# Runs both backends + the frontend. The frontend can talk to either backend
+# via the in-app backend switcher (Python on :8000, .NET on :8080).
+#
+#   cp .env.example .env   # fill in Azure creds first
+#   docker compose up --build
+#
+# Then open http://localhost:5173
+
+services:
+  backend-python:
+    build: ./backend-python
+    env_file: .env
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  backend-dotnet:
+    build: ./backend-dotnet
+    env_file: .env
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend-python
+      - backend-dotnet
+    restart: unless-stopped
