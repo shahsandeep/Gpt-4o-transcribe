@@ -82,11 +82,11 @@ app.MapPost("/rest/transcribe", async (HttpContext context) =>
         audio = ms.ToArray();
     }
 
-    string transcript;
+    IReadOnlyList<TranscriptTurn> turns;
     long transcribeMs;
     try
     {
-        (transcript, transcribeMs) = await transcription.TranscribeAsync(
+        (turns, transcribeMs) = await transcription.TranscribeAsync(
             audio,
             string.IsNullOrEmpty(file.FileName) ? "audio.wav" : file.FileName,
             string.IsNullOrEmpty(file.ContentType) ? "application/octet-stream" : file.ContentType,
@@ -105,32 +105,70 @@ app.MapPost("/rest/transcribe", async (HttpContext context) =>
             statusCode: StatusCodes.Status502BadGateway);
     }
 
+    var transcript = RestTranscriptionService.JoinTurns(
+        turns.Select(t => (t.Speaker, t.Text)));
+
+    // One entry per speaker turn (speaker null for non-diarized audio).
+    var translations = new string?[turns.Count];
+    long translateMs = 0L;
+    string? translateError = null;
+
+    if (translate && !string.IsNullOrEmpty(transcript))
+    {
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        // Translate each turn separately so translations align per turn.
+        var tasks = turns.Select(async t =>
+        {
+            try
+            {
+                return (Text: await translation.TranslateAsync(
+                    t.Text, targetLanguage, context.RequestAborted), Error: (string?)null);
+            }
+            catch (Exception ex)
+            {
+                return (Text: (string?)null, Error: $"translation failed: {ex.Message}");
+            }
+        }).ToArray();
+
+        var outcomes = await Task.WhenAll(tasks);
+        stopwatch.Stop();
+        translateMs = stopwatch.ElapsedMilliseconds;
+
+        for (var i = 0; i < outcomes.Length; i++)
+        {
+            translations[i] = outcomes[i].Text;
+            if (outcomes[i].Error is not null && translateError is null)
+            {
+                logger.LogError("REST turn translation failed: {Error}", outcomes[i].Error);
+                translateError = outcomes[i].Error;
+            }
+        }
+    }
+
+    var segments = turns.Select((t, i) => new Dictionary<string, object?>
+    {
+        ["speaker"] = t.Speaker,
+        ["text"] = t.Text,
+        ["translation"] = translations[i],
+    }).ToList();
+
+    var translationJoined = translate
+        ? RestTranscriptionService.JoinTurns(turns.Select((t, i) => (t.Speaker, translations[i] ?? "")))
+        : null;
+
     // Ordered, null-preserving payload: `translation` is always present (null when
     // absent), but `translateError` is only added when a translation attempt fails.
     var result = new Dictionary<string, object?>
     {
         ["transcript"] = transcript,
-        ["translation"] = null,
+        ["translation"] = string.IsNullOrEmpty(translationJoined) ? null : translationJoined,
+        ["segments"] = segments,
         ["transcribeMs"] = transcribeMs,
-        ["translateMs"] = 0L,
+        ["translateMs"] = translateMs,
     };
-
-    if (translate && !string.IsNullOrEmpty(transcript))
+    if (translateError is not null)
     {
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        try
-        {
-            result["translation"] = await translation.TranslateAsync(
-                transcript, targetLanguage, context.RequestAborted);
-            stopwatch.Stop();
-            result["translateMs"] = stopwatch.ElapsedMilliseconds;
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "REST translation failed");
-            result["translation"] = null;
-            result["translateError"] = $"translation failed: {ex.Message}";
-        }
+        result["translateError"] = translateError;
     }
 
     return Results.Json(result);

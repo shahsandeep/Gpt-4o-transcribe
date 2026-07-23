@@ -20,6 +20,9 @@ public sealed class TranscriptionException : Exception
     }
 }
 
+/// <summary>One speaker turn of a transcript (Speaker is null for non-diarized audio).</summary>
+public sealed record TranscriptTurn(string? Speaker, string Text);
+
 /// <summary>
 /// Transcribes complete audio files via the Azure REST
 /// <c>/audio/transcriptions</c> endpoint.
@@ -54,7 +57,7 @@ public sealed class RestTranscriptionService
     /// is the wall-clock duration of the Azure call. Throws
     /// <see cref="TranscriptionException"/> on any non-2xx response.
     /// </summary>
-    public async Task<(string Text, long Ms)> TranscribeAsync(
+    public async Task<(IReadOnlyList<TranscriptTurn> Turns, long Ms)> TranscribeAsync(
         byte[] audio,
         string fileName,
         string contentType,
@@ -115,40 +118,30 @@ public sealed class RestTranscriptionService
                 reason.Length > 0 ? reason : "error");
         }
 
-        return (ExtractText(responseBody), elapsedMs);
+        return (ParseTurns(responseBody), elapsedMs);
     }
 
     /// <summary>
-    /// Turn an Azure transcription response into display text. Handles the flat
+    /// Turn an Azure transcription response into speaker turns. Handles the flat
     /// <c>json</c> shape (<c>{"text": ...}</c>) and the <c>diarized_json</c> shape
     /// (<c>{"segments": [{"speaker": "A", "text": ...}, ...]}</c>) from
     /// gpt-4o-transcribe-diarize. Consecutive same-speaker segments merge into one
-    /// "A: ..." line. Falls back to top-level <c>text</c> when there are no usable
-    /// segments (Azure sometimes returns only that even for diarized_json).
-    /// Behavior-identical to the Python <c>format_transcript</c>.
+    /// turn. Falls back to a single speaker-less turn built from top-level
+    /// <c>text</c> when there are no usable segments (Azure sometimes returns only
+    /// that even for diarized_json). Behavior-identical to the Python
+    /// <c>parse_segments</c>.
     /// </summary>
-    private static string ExtractText(string responseBody)
+    private static List<TranscriptTurn> ParseTurns(string responseBody)
     {
         using var doc = JsonDocument.Parse(responseBody);
         var root = doc.RootElement;
+        var turns = new List<TranscriptTurn>();
 
         if (root.ValueKind == JsonValueKind.Object &&
             root.TryGetProperty("segments", out var segments) &&
             segments.ValueKind == JsonValueKind.Array &&
             segments.GetArrayLength() > 0)
         {
-            var lines = new List<string>();
-            string? curSpeaker = null;
-            var haveSpeaker = false; // distinguishes "no segment yet" from "speaker == null"
-            var parts = new List<string>();
-
-            void Flush()
-            {
-                if (parts.Count == 0) return;
-                var prefix = string.IsNullOrEmpty(curSpeaker) ? "" : $"{curSpeaker}: ";
-                lines.Add(prefix + string.Join(" ", parts));
-            }
-
             foreach (var seg in segments.EnumerateArray())
             {
                 if (seg.ValueKind != JsonValueKind.Object) continue;
@@ -161,28 +154,39 @@ public sealed class RestTranscriptionService
                     ? sp.GetString()
                     : null;
 
-                if (haveSpeaker && speaker != curSpeaker && parts.Count > 0)
+                if (turns.Count > 0 && turns[^1].Speaker == speaker)
                 {
-                    Flush();
-                    parts.Clear();
+                    turns[^1] = turns[^1] with { Text = turns[^1].Text + " " + segText };
                 }
-                curSpeaker = speaker;
-                haveSpeaker = true;
-                parts.Add(segText);
+                else
+                {
+                    turns.Add(new TranscriptTurn(speaker, segText));
+                }
             }
-            Flush();
-
-            var joined = string.Join("\n", lines).Trim();
-            if (joined.Length > 0) return joined;
+            if (turns.Count > 0) return turns;
         }
 
         if (root.ValueKind == JsonValueKind.Object &&
             root.TryGetProperty("text", out var text) &&
             text.ValueKind == JsonValueKind.String)
         {
-            return (text.GetString() ?? "").Trim();
+            var s = (text.GetString() ?? "").Trim();
+            if (s.Length > 0) turns.Add(new TranscriptTurn(null, s));
         }
 
-        return "";
+        return turns;
+    }
+
+    /// <summary>Join speaker turns into labeled lines ("A: ...\nB: ...").</summary>
+    public static string JoinTurns(IEnumerable<(string? Speaker, string Text)> turns)
+    {
+        var lines = new List<string>();
+        foreach (var (speaker, text) in turns)
+        {
+            var value = (text ?? "").Trim();
+            if (value.Length == 0) continue;
+            lines.Add(string.IsNullOrEmpty(speaker) ? value : $"{speaker}: {value}");
+        }
+        return string.Join("\n", lines).Trim();
     }
 }
