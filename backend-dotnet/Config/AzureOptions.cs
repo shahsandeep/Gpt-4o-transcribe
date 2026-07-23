@@ -17,6 +17,9 @@ public sealed class AzureOptions
     public string TranscribeDeployment { get; init; } = "gpt-4o-transcribe";
     public string RealtimeApiVersion { get; init; } = "2025-04-01-preview";
 
+    // --- REST transcription (audio/transcriptions) ---
+    public string TranscribeRestApiVersion { get; init; } = "2025-04-01-preview";
+
     // --- Chat deployment used for translation ---
     public string ChatDeployment { get; init; } = "gpt-4o";
     public string ChatApiVersion { get; init; } = "2024-10-21";
@@ -42,6 +45,7 @@ public sealed class AzureOptions
 
             TranscribeDeployment = Env("AZURE_TRANSCRIBE_DEPLOYMENT", "gpt-4o-transcribe"),
             RealtimeApiVersion = Env("AZURE_REALTIME_API_VERSION", "2025-04-01-preview"),
+            TranscribeRestApiVersion = Env("AZURE_TRANSCRIBE_REST_API_VERSION", "2025-04-01-preview"),
 
             ChatDeployment = Env("AZURE_CHAT_DEPLOYMENT", "gpt-4o"),
             ChatApiVersion = Env("AZURE_CHAT_API_VERSION", "2024-10-21"),
@@ -84,6 +88,16 @@ public sealed class AzureOptions
         $"wss://{EndpointHost}/openai/realtime" +
         $"?api-version={RealtimeApiVersion}" +
         $"&intent=transcription";
+
+    /// <summary>
+    /// Azure REST audio transcription URL.
+    /// <c>https://x.openai.azure.com/openai/deployments/&lt;transcribe&gt;/audio/transcriptions?api-version=&lt;restver&gt;</c>.
+    /// Uses the transcription deployment (not the chat deployment).
+    /// </summary>
+    public string TranscriptionRestUrl =>
+        $"https://{EndpointHost}/openai/deployments/" +
+        $"{TranscribeDeployment}/audio/transcriptions" +
+        $"?api-version={TranscribeRestApiVersion}";
 
     /// <summary>
     /// Azure chat completions REST URL used for translation.

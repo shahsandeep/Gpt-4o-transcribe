@@ -33,6 +33,38 @@ On each client WebSocket connection the backend:
 |--------|-------------------|--------------------------------------|
 | GET    | `/health`         | Liveness probe → `{ "status": "ok" }` |
 | WS     | `/ws/transcribe`  | One WebSocket per transcription session |
+| POST   | `/rest/transcribe`| Transcribe a complete audio file (optionally translate) |
+
+### `POST /rest/transcribe`
+
+An independent REST path alongside the WebSocket: POST one complete audio file and
+get the whole transcript back at once, optionally translated. Behavior-identical to
+the Python backend; see [`../docs/REST_API.md`](../docs/REST_API.md) for the full
+contract.
+
+Request — `multipart/form-data`:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `file` | yes | Audio file bytes (frontend sends mono 16-bit PCM WAV @ 24 kHz, `audio/wav`). Passed through to Azure unchanged. |
+| `inputLanguage` | no | ISO-639-1 code of the spoken audio. Omit or send `auto` to let Azure detect. |
+| `targetLanguage` | no | ISO-639-1 code to translate into. Required only when `translate=true`. |
+| `translate` | no | `true` / `false` (default `false`). When true, the transcript is translated via the chat deployment. |
+
+Response — `200 application/json`:
+
+```jsonc
+{
+  "transcript": "hello world",
+  "translation": "hola mundo",   // null when translate=false or transcript empty
+  "transcribeMs": 812,            // server-measured Azure transcription time
+  "translateMs": 143              // server-measured translation time (0 when skipped)
+}
+```
+
+A transcription failure returns `502` with `{ "error": "..." }`. A translation
+failure is non-fatal: the transcript is still returned with `translation: null`
+and an extra `translateError` field.
 
 ## Configuration
 
@@ -45,8 +77,9 @@ match the Python backend.
 |----------|---------|---------|
 | `AZURE_OPENAI_ENDPOINT` | `https://your-resource.openai.azure.com` | Azure OpenAI resource endpoint |
 | `AZURE_OPENAI_API_KEY` | *(empty)* | Azure OpenAI API key (`api-key` header) |
-| `AZURE_TRANSCRIBE_DEPLOYMENT` | `gpt-4o-transcribe` | Realtime transcription deployment name |
+| `AZURE_TRANSCRIBE_DEPLOYMENT` | `gpt-4o-transcribe` | Realtime + REST transcription deployment name |
 | `AZURE_REALTIME_API_VERSION` | `2025-04-01-preview` | Realtime API version |
+| `AZURE_TRANSCRIBE_REST_API_VERSION` | `2025-04-01-preview` | REST `/audio/transcriptions` API version |
 | `AZURE_CHAT_DEPLOYMENT` | `gpt-4o` | Chat deployment used for translation |
 | `AZURE_CHAT_API_VERSION` | `2024-10-21` | Chat completions API version |
 | `VAD_THRESHOLD` | `0.5` | Server VAD threshold |
@@ -57,6 +90,7 @@ match the Python backend.
 Derived URLs (same rules as the Python backend):
 
 - Realtime WS: `wss://<host>/openai/realtime?api-version=<ver>&intent=transcription`
+- REST transcription: `https://<host>/openai/deployments/<transcribe>/audio/transcriptions?api-version=<restver>`
 - Translation: `https://<host>/openai/deployments/<chat>/chat/completions?api-version=<chatver>`
 
 ## Run locally
@@ -91,12 +125,13 @@ docker run --env-file .env -p 8080:8080 transcribe-dotnet
 
 ```
 backend-dotnet/
-├── Program.cs                     # Minimal API: /health + /ws/transcribe wiring
+├── Program.cs                     # Minimal API: /health + /ws/transcribe + /rest/transcribe wiring
 ├── Config/AzureOptions.cs         # Env-bound config + derived Azure URLs
 ├── Models/Messages.cs             # Protocol DTOs + camelCase serializer helpers
 ├── Realtime/
 │   ├── AzureRealtimeClient.cs     # Upstream ClientWebSocket to Azure realtime
 │   ├── TranslationService.cs      # Azure chat completions translation
+│   ├── RestTranscriptionService.cs # Azure REST /audio/transcriptions client
 │   └── TranscriptionSession.cs    # Per-connection orchestration
 ├── TranscribeApi.csproj
 ├── Dockerfile
