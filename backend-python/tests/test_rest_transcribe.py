@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from app.config import Settings
 from app.main import _parse_bool
-from app.rest_transcribe import format_transcript
+from app.rest_transcribe import format_transcript, join_turns, parse_segments
 
 
 def _settings(**overrides) -> Settings:
@@ -142,3 +142,39 @@ def test_format_transcript_falls_back_to_text_when_segments_empty():
 
 def test_format_transcript_missing_everything():
     assert format_transcript({}) == ""
+
+
+# ---------- structured turns (diarization) ----------
+
+
+def test_parse_segments_merges_and_keeps_speakers():
+    payload = {
+        "segments": [
+            {"speaker": "A", "text": "Hi there."},
+            {"speaker": "A", "text": "How are you?"},
+            {"speaker": "B", "text": "Good, thanks."},
+        ]
+    }
+    assert parse_segments(payload) == [
+        {"speaker": "A", "text": "Hi there. How are you?"},
+        {"speaker": "B", "text": "Good, thanks."},
+    ]
+
+
+def test_parse_segments_flat_json_single_turn():
+    assert parse_segments({"text": "just text"}) == [
+        {"speaker": None, "text": "just text"}
+    ]
+
+
+def test_parse_segments_empty():
+    assert parse_segments({}) == []
+
+
+def test_join_turns_labels_and_field():
+    turns = [
+        {"speaker": "A", "text": "hello", "translation": "hola"},
+        {"speaker": "B", "text": "bye", "translation": "adios"},
+    ]
+    assert join_turns(turns, "text") == "A: hello\nB: bye"
+    assert join_turns(turns, "translation") == "A: hola\nB: adios"

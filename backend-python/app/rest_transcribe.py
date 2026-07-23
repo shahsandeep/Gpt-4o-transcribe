@@ -30,27 +30,21 @@ class TranscriptionError(Exception):
         super().__init__(f"azure transcription failed: {status} {reason}")
 
 
-def format_transcript(payload: dict) -> str:
-    """Turn an Azure transcription response into display text.
+def parse_segments(payload: dict) -> list[dict]:
+    """Turn an Azure transcription response into a list of speaker turns.
 
-    Handles both the flat `json` shape (`{"text": ...}`) and the
-    `diarized_json` shape (`{"segments": [{"speaker": "A", "text": ...}, ...]}`)
-    produced by gpt-4o-transcribe-diarize. Consecutive segments from the same
-    speaker are merged into one "A: ..." line. Falls back to the top-level
-    `text` when there are no usable segments (Azure sometimes returns only that
-    even for diarized_json).
+    Handles the flat `json` shape (`{"text": ...}`) and the `diarized_json`
+    shape (`{"segments": [{"speaker": "A", "text": ...}, ...]}`) produced by
+    gpt-4o-transcribe-diarize. Consecutive segments from the same speaker are
+    merged into one turn. Falls back to a single speaker-less turn built from
+    the top-level `text` when there are no usable segments (Azure sometimes
+    returns only that even for diarized_json).
+
+    Returns a list of `{"speaker": str | None, "text": str}` (empty if nothing).
     """
+    turns: list[dict] = []
     segments = payload.get("segments")
     if isinstance(segments, list) and segments:
-        lines: list[str] = []
-        cur_speaker: object = object()  # sentinel != any real speaker/None
-        parts: list[str] = []
-
-        def flush() -> None:
-            if parts:
-                prefix = f"{cur_speaker}: " if cur_speaker else ""
-                lines.append(prefix + " ".join(parts))
-
         for seg in segments:
             if not isinstance(seg, dict):
                 continue
@@ -58,17 +52,33 @@ def format_transcript(payload: dict) -> str:
             if not text:
                 continue
             speaker = seg.get("speaker")
-            if speaker != cur_speaker and parts:
-                flush()
-                parts = []
-            cur_speaker = speaker
-            parts.append(text)
-        flush()
-        joined = "\n".join(lines).strip()
-        if joined:
-            return joined
+            if turns and turns[-1]["speaker"] == speaker:
+                turns[-1]["text"] += " " + text
+            else:
+                turns.append({"speaker": speaker, "text": text})
 
-    return (payload.get("text") or "").strip()
+    if turns:
+        return turns
+
+    text = (payload.get("text") or "").strip()
+    return [{"speaker": None, "text": text}] if text else []
+
+
+def join_turns(turns: list[dict], field: str = "text") -> str:
+    """Join speaker turns into labeled lines ("A: ...\\nB: ...")."""
+    lines: list[str] = []
+    for turn in turns:
+        value = (turn.get(field) or "").strip()
+        if not value:
+            continue
+        speaker = turn.get("speaker")
+        lines.append(f"{speaker}: {value}" if speaker else value)
+    return "\n".join(lines).strip()
+
+
+def format_transcript(payload: dict) -> str:
+    """Convenience: parse then join into labeled transcript text."""
+    return join_turns(parse_segments(payload))
 
 
 async def transcribe_audio(
@@ -78,13 +88,15 @@ async def transcribe_audio(
     input_language: str | None,
     settings: Settings,
     client: Optional[httpx.AsyncClient] = None,
-) -> tuple[str, int]:
+) -> tuple[list[dict], int]:
     """POST `audio` to Azure's REST transcription endpoint.
 
     Sends multipart/form-data with `file`, the configured `response_format`, and
     (only when `input_language` is set and not "auto") `language`. Returns
-    `(transcript, elapsed_ms)` where `elapsed_ms` is the wall-clock duration of
-    the Azure call. Raises `TranscriptionError` on any non-2xx response.
+    `(turns, elapsed_ms)` where `turns` is a list of `{"speaker", "text"}` (one
+    per speaker turn; a single speaker-less turn for non-diarized responses) and
+    `elapsed_ms` is the wall-clock duration of the Azure call. Raises
+    `TranscriptionError` on any non-2xx response.
     """
     data: dict[str, str] = {
         "response_format": settings.azure_transcribe_response_format or "json"
@@ -117,11 +129,17 @@ async def transcribe_audio(
             raise TranscriptionError(resp.status_code, reason or "error")
 
         payload = resp.json()
-        text = format_transcript(payload) if isinstance(payload, dict) else ""
-        return text, elapsed_ms
+        turns = parse_segments(payload) if isinstance(payload, dict) else []
+        return turns, elapsed_ms
     finally:
         if owns_client:
             await client.aclose()
 
 
-__all__ = ["transcribe_audio", "format_transcript", "TranscriptionError"]
+__all__ = [
+    "transcribe_audio",
+    "parse_segments",
+    "join_turns",
+    "format_transcript",
+    "TranscriptionError",
+]

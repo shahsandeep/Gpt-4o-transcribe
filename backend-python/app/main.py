@@ -6,6 +6,7 @@ which relays between the client and the upstream Azure Realtime API.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 
@@ -14,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .config import get_settings
-from .rest_transcribe import TranscriptionError, transcribe_audio
+from .rest_transcribe import TranscriptionError, join_turns, transcribe_audio
 from .session import TranscriptionSession
 from .translator import translate
 
@@ -60,7 +61,7 @@ async def rest_transcribe(
     audio = await file.read()
 
     try:
-        transcript, transcribe_ms = await transcribe_audio(
+        turns, transcribe_ms = await transcribe_audio(
             audio,
             file.filename or "audio.wav",
             file.content_type or "application/octet-stream",
@@ -76,23 +77,41 @@ async def rest_transcribe(
             content={"error": f"azure transcription failed: {exc}"},
         )
 
+    transcript = join_turns(turns, "text")
     result: dict[str, object] = {
         "transcript": transcript,
         "translation": None,
+        # One entry per speaker turn (speaker is null for non-diarized audio).
+        "segments": [
+            {"speaker": t.get("speaker"), "text": t.get("text", ""), "translation": None}
+            for t in turns
+        ],
         "transcribeMs": transcribe_ms,
         "translateMs": 0,
     }
 
     if _parse_bool(translate_flag) and transcript:
         started = time.monotonic()
-        try:
-            translation = await translate(transcript, targetLanguage or "", settings)
-            result["translation"] = translation
-            result["translateMs"] = int((time.monotonic() - started) * 1000)
-        except Exception as exc:  # noqa: BLE001 - translation failure is non-fatal
-            logger.exception("REST translation failed")
-            result["translation"] = None
-            result["translateError"] = f"translation failed: {exc}"
+        target = targetLanguage or ""
+        # Translate each speaker turn separately so translations align per turn.
+        outcomes = await asyncio.gather(
+            *(translate(t["text"], target, settings) for t in turns),
+            return_exceptions=True,
+        )
+        result["translateMs"] = int((time.monotonic() - started) * 1000)
+        segments = result["segments"]
+        translate_error: str | None = None
+        for i, outcome in enumerate(outcomes):
+            if isinstance(outcome, Exception):
+                logger.exception("REST turn translation failed", exc_info=outcome)
+                if translate_error is None:
+                    translate_error = f"translation failed: {outcome}"
+            else:
+                turns[i]["translation"] = outcome
+                segments[i]["translation"] = outcome
+        result["translation"] = join_turns(turns, "translation") or None
+        if translate_error is not None:
+            result["translateError"] = translate_error
 
     return JSONResponse(content=result)
 
