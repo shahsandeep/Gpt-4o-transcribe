@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { Segment } from '../types';
+import { speakerColor, speakerName } from '../lib/speakers';
 
 interface TranscriptViewProps {
   segments: Segment[];
@@ -34,16 +35,29 @@ export function TranscriptView({ segments, translate }: TranscriptViewProps) {
 
   return (
     <div className="transcript" ref={scrollRef}>
-      {segments.map((s) => (
-        <div key={s.itemId} className={`segment ${s.partial ? 'partial' : 'final'}`}>
-          <div className="segment-original">
-            {s.original || <span className="placeholder">…</span>}
+      {segments.map((s) => {
+        const color = speakerColor(s.speaker);
+        const name = speakerName(s.speaker);
+        return (
+          <div
+            key={s.itemId}
+            className={`segment ${s.partial ? 'partial' : 'final'} ${name ? 'has-speaker' : ''}`}
+            style={color ? { borderLeftColor: color } : undefined}
+          >
+            {name && (
+              <span className="speaker-chip" style={{ background: color ?? undefined }}>
+                {name}
+              </span>
+            )}
+            <div className="segment-original">
+              {s.original || <span className="placeholder">…</span>}
+            </div>
+            {translate && s.translation != null && (
+              <div className="segment-translation">{s.translation}</div>
+            )}
           </div>
-          {translate && s.translation != null && (
-            <div className="segment-translation">{s.translation}</div>
-          )}
-        </div>
-      ))}
+        );
+      })}
       <div ref={bottomRef} />
     </div>
   );

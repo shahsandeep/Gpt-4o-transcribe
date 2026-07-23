@@ -33,7 +33,8 @@ export function toTxt(segments: Segment[], meta: ExportMeta): string {
 
   const body = rows
     .map((s) => {
-      const lines = [`[${formatClock(s.startMs)}] ${s.original.trim()}`];
+      const who = s.speaker ? `Speaker ${s.speaker} ` : '';
+      const lines = [`[${formatClock(s.startMs)}] ${who}${s.original.trim()}`];
       if (s.translation && s.translation.trim()) {
         lines.push(`    → ${s.translation.trim()}`);
       }
@@ -72,6 +73,7 @@ export function toJson(segments: Segment[], meta: ExportMeta): string {
   const rows = exportableSegments(segments).map((s, i) => ({
     index: i + 1,
     itemId: s.itemId,
+    speaker: s.speaker ?? null,
     startMs: Math.round(s.startMs),
     endMs: s.endMs != null ? Math.round(s.endMs) : null,
     original: s.original.trim(),

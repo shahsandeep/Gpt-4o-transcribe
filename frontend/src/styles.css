@@ -811,3 +811,35 @@ code {
 .rec-translation {
   white-space: pre-wrap;
 }
+
+/* --------------------------------------------------------------- diarization */
+
+.segment.has-speaker {
+  border-left-width: 3px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.speaker-chip {
+  display: inline-block;
+  margin-bottom: 5px;
+  padding: 1px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #0b0f17; /* dark text on the speaker color */
+  background: var(--accent);
+}
+
+/* Speaker turns inside a recording's "Transcribe full" result. */
+.rec-turns {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rec-turn {
+  border-left: 3px solid var(--border);
+  padding: 2px 0 2px 12px;
+}

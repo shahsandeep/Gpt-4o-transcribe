@@ -3,9 +3,18 @@
 
 import type { Backend } from './backends';
 
+/** One speaker turn from a diarized (or plain) transcription. */
+export interface RestSegment {
+  speaker: string | null;
+  text: string;
+  translation: string | null;
+}
+
 export interface RestResult {
   transcript: string;
   translation: string | null;
+  /** Per-speaker-turn breakdown (one speaker-less entry when not diarized). */
+  segments: RestSegment[];
   transcribeMs: number;
   translateMs: number;
   translateError?: string;
@@ -64,9 +73,20 @@ export async function postTranscribe(
     throw new Error(json.error ?? `Transcription failed (HTTP ${res.status}).`);
   }
 
+  const transcript = json.transcript ?? '';
+  const segments =
+    Array.isArray(json.segments) && json.segments.length > 0
+      ? json.segments.map((s) => ({
+          speaker: s.speaker ?? null,
+          text: s.text ?? '',
+          translation: s.translation ?? null,
+        }))
+      : [{ speaker: null, text: transcript, translation: json.translation ?? null }];
+
   return {
-    transcript: json.transcript ?? '',
+    transcript,
     translation: json.translation ?? null,
+    segments,
     transcribeMs: json.transcribeMs ?? 0,
     translateMs: json.translateMs ?? 0,
     translateError: json.translateError,

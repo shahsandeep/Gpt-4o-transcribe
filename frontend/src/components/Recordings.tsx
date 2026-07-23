@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Backend } from '../lib/backends';
-import { postTranscribe } from '../lib/rest';
+import { postTranscribe, type RestSegment } from '../lib/rest';
+import { speakerColor, speakerName } from '../lib/speakers';
 import {
   deleteRecording,
   getRecording,
@@ -20,6 +21,7 @@ interface RowResult {
   loading?: boolean;
   transcript?: string;
   translation?: string | null;
+  segments?: RestSegment[];
   ms?: number;
   error?: string;
 }
@@ -103,6 +105,7 @@ export function Recordings({
           [id]: {
             transcript: result.transcript,
             translation: result.translation,
+            segments: result.segments,
             ms: result.transcribeMs + result.translateMs,
             error: result.translateError,
           },
@@ -195,9 +198,38 @@ export function Recordings({
                   )}
                   {res.transcript !== undefined && (
                     <>
-                      <div className="rec-transcript">{res.transcript || '(no speech detected)'}</div>
-                      {translate && res.translation && (
-                        <div className="rec-translation">{res.translation}</div>
+                      {res.segments && res.segments.some((s) => s.speaker) ? (
+                        <div className="rec-turns">
+                          {res.segments
+                            .filter((s) => s.text.trim())
+                            .map((s, i) => {
+                              const color = speakerColor(s.speaker);
+                              return (
+                                <div
+                                  key={i}
+                                  className="rec-turn"
+                                  style={color ? { borderLeftColor: color } : undefined}
+                                >
+                                  <span className="speaker-chip" style={{ background: color ?? undefined }}>
+                                    {speakerName(s.speaker)}
+                                  </span>
+                                  <div className="rec-transcript">{s.text}</div>
+                                  {translate && s.translation && (
+                                    <div className="rec-translation">{s.translation}</div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                        </div>
+                      ) : (
+                        <>
+                          <div className="rec-transcript">
+                            {res.transcript || '(no speech detected)'}
+                          </div>
+                          {translate && res.translation && (
+                            <div className="rec-translation">{res.translation}</div>
+                          )}
+                        </>
                       )}
                       {typeof res.ms === 'number' && (
                         <div className="rec-timing">{res.ms} ms round-trip</div>

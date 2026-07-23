@@ -55,18 +55,17 @@ export function useRestTranscription(mode: 'rest-batched' | 'rest-full'): Transc
     ]);
   }, []);
 
-  const resolveSegment = useCallback(
-    (itemId: string, original: string, translation: string | null) => {
-      setSegments((prev) => {
-        const idx = prev.findIndex((s) => s.itemId === itemId);
-        if (idx === -1) return prev;
-        const next = prev.slice();
-        next[idx] = { ...next[idx], original, translation, partial: false, endMs: performance.now() };
-        return next;
-      });
-    },
-    [],
-  );
+  // Replace the pending placeholder (itemId) in place with the resolved turns,
+  // preserving chronological position even when chunks resolve out of order.
+  const resolveSegments = useCallback((placeholderId: string, resolved: Segment[]) => {
+    setSegments((prev) => {
+      const idx = prev.findIndex((s) => s.itemId === placeholderId);
+      if (idx === -1) return prev;
+      const next = prev.slice();
+      next.splice(idx, 1, ...resolved);
+      return next;
+    });
+  }, []);
 
   const dropSegment = useCallback((itemId: string) => {
     setSegments((prev) => prev.filter((s) => s.itemId !== itemId));
@@ -91,12 +90,25 @@ export function useRestTranscription(mode: 'rest-batched' | 'rest-full'): Transc
           },
           abortRef.current?.signal,
         );
-        if (!result.transcript.trim()) {
+        const turns = result.segments.filter((s) => s.text.trim());
+        if (turns.length === 0) {
           // Silence or nothing recognized in this window — don't clutter the view.
           dropSegment(itemId);
           return;
         }
-        resolveSegment(itemId, result.transcript, result.translation);
+        const t = performance.now();
+        resolveSegments(
+          itemId,
+          turns.map((s, i) => ({
+            itemId: `${itemId}#${i}`,
+            speaker: s.speaker,
+            original: s.text,
+            translation: s.translation,
+            partial: false,
+            startMs: t,
+            endMs: t,
+          })),
+        );
         if (result.translateError) pushNotice('error', result.translateError);
       } catch (e) {
         if (e instanceof DOMException && e.name === 'AbortError') {
@@ -107,7 +119,7 @@ export function useRestTranscription(mode: 'rest-batched' | 'rest-full'): Transc
         pushNotice('error', e instanceof Error ? e.message : 'REST transcription failed.');
       }
     },
-    [addPending, dropSegment, pushNotice, resolveSegment],
+    [addPending, dropSegment, pushNotice, resolveSegments],
   );
 
   // Encode + POST the current rolling window (batched mode).

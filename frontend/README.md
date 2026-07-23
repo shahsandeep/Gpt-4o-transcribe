@@ -85,6 +85,15 @@ Every session's audio is stored in the browser via **IndexedDB**
 Nothing is uploaded except when you explicitly transcribe; recordings never leave the
 browser otherwise.
 
+## Speaker diarization
+
+With a diarize deployment (`AZURE_TRANSCRIBE_RESPONSE_FORMAT=diarized_json`), the REST
+response includes per-speaker turns. The UI renders each turn as its own bubble with a
+colored **Speaker A / B / C** chip (`src/lib/speakers.ts` maps each speaker to a stable
+color). Each turn is translated separately so the translation sits under the matching
+speaker. Speaker labels also appear in `.txt` / `.json` exports. Non-diarized responses
+render as a single un-chipped block, exactly as before.
+
 ## How it works (audio pipeline)
 
 1. **Device pick** — `navigator.mediaDevices.enumerateDevices()` lists inputs

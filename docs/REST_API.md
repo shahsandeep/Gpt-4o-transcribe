@@ -41,12 +41,21 @@ Content-Type: multipart/form-data
 
 ```jsonc
 {
-  "transcript": "hello world",
-  "translation": "hola mundo",   // null when translate=false or transcript empty
+  "transcript": "A: hello\nB: hi there",   // labeled lines when diarized, else flat text
+  "translation": "A: hola\nB: hola",        // null when translate=false or transcript empty
+  "segments": [                             // one entry per speaker turn
+    { "speaker": "A", "text": "hello",     "translation": "hola" },
+    { "speaker": "B", "text": "hi there",  "translation": "hola" }
+  ],
   "transcribeMs": 812,            // server-measured Azure transcription time
   "translateMs": 143              // server-measured translation time (0 when skipped)
 }
 ```
+
+For non-diarized responses `segments` has a single entry with `"speaker": null`.
+When translation is on, **each turn is translated separately** so the per-turn
+`translation` aligns with its speaker; `translation` (top level) is the labeled
+join of those.
 
 ### Error `4xx / 5xx application/json`
 
@@ -65,8 +74,10 @@ Content-Type: multipart/form-data
    ```
    (The deployment is in the URL, so no `model` form field is needed for Azure.)
 3. Parse `{ "text": "..." }` → `transcript`.
-4. If `translate=true` and the transcript is non-empty, translate via the existing
-   gpt-4o chat translation path → `translation`.
+4. If `translate=true` and the transcript is non-empty, translate **each speaker
+   turn separately** (concurrently) via the gpt-4o chat path so translations align
+   per turn. A failed turn leaves its `translation` null and surfaces one
+   `translateError`; it never fails the whole request.
 5. Return the JSON above.
 
 > `gpt-4o-transcribe` supports `response_format` of `json` or `text` only (not

@@ -103,6 +103,8 @@ export type ServerMessage =
 /** One transcript segment, correlated across partial/final/translation by itemId. */
 export interface Segment {
   itemId: string;
+  /** Diarized speaker label ("A", "B", ...) or null/undefined when not diarized. */
+  speaker?: string | null;
   /** Original (transcribed) text. */
   original: string;
   /** Translated text, if any. */
