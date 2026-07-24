@@ -8,6 +8,10 @@ Covers:
 from __future__ import annotations
 
 import asyncio
+import os
+import stat
+
+import pytest
 
 from app.audio_enhance import enhance_wav, ffmpeg_available, ffmpeg_binary
 from app.config import Settings
@@ -243,6 +247,23 @@ def test_ffmpeg_available_with_configured_path(tmp_path):
     exe.write_bytes(b"stub")
     assert ffmpeg_available(str(tmp_path)) is True
     assert ffmpeg_available(str(tmp_path / "missing")) is False
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX shim shell script")
+def test_enhance_wav_runs_via_thread_subprocess(tmp_path):
+    # A fake "ffmpeg" that ignores its args and copies stdin -> stdout. This
+    # exercises the real subprocess.run + asyncio.to_thread pipeline (the path
+    # that replaced asyncio.create_subprocess_exec) without needing real ffmpeg.
+    fake = tmp_path / "ffmpeg"
+    fake.write_text("#!/bin/sh\ncat\n")
+    fake.chmod(fake.stat().st_mode | stat.S_IEXEC | stat.S_IRUSR)
+
+    payload = b"RIFF....WAVEdata-abcdefg"
+    out, enhanced = asyncio.get_event_loop().run_until_complete(
+        enhance_wav(payload, "highpass=f=80", str(fake))
+    )
+    assert enhanced is True
+    assert out == payload
 
 
 def test_enhance_wav_empty_filters_is_noop():

@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import shutil
+import subprocess
 from pathlib import Path
 from typing import Optional
 
@@ -59,7 +60,23 @@ async def enhance_wav(
         logger.info("Audio enhancement requested but ffmpeg was not found; skipping")
         return audio, False
 
-    # Read WAV from stdin, apply filters, write WAV (mono, 24 kHz) to stdout.
+    # Run ffmpeg in a worker thread with the blocking subprocess API. We
+    # deliberately avoid asyncio.create_subprocess_exec: on Windows it raises
+    # NotImplementedError unless the event loop is a ProactorEventLoop, and the
+    # loop uvicorn ends up with is not guaranteed. A thread + subprocess.run is
+    # portable across every OS and event-loop policy.
+    out, err = await asyncio.to_thread(_run_ffmpeg, binary, filters, audio, timeout_s)
+    if out is None:
+        logger.warning("ffmpeg enhancement failed; using original audio: %s", err)
+        return audio, False
+    return out, True
+
+
+def _run_ffmpeg(
+    binary: str, filters: str, audio: bytes, timeout_s: float
+) -> tuple[Optional[bytes], Optional[str]]:
+    """Blocking ffmpeg call (WAV in -> filtered WAV out). Returns (bytes, None)
+    on success or (None, reason) on any failure. Safe to run in a thread."""
     cmd = [
         binary,
         "-hide_banner",
@@ -77,34 +94,25 @@ async def enhance_wav(
         "wav",
         "pipe:1",
     ]
-
     try:
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        proc = subprocess.run(
+            cmd,
+            input=audio,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=timeout_s,
         )
-    except Exception:  # noqa: BLE001 - spawn failure -> fall back to original
-        logger.exception("Failed to spawn ffmpeg for audio enhancement")
-        return audio, False
+    except subprocess.TimeoutExpired:
+        return None, "timed out"
+    except FileNotFoundError:
+        return None, f"executable not found: {binary}"
+    except Exception as exc:  # noqa: BLE001 - report and fall back
+        return None, f"spawn failed: {exc}"
 
-    try:
-        out, err = await asyncio.wait_for(proc.communicate(input=audio), timeout_s)
-    except asyncio.TimeoutError:
-        logger.warning("ffmpeg audio enhancement timed out; using original audio")
-        try:
-            proc.kill()
-        except ProcessLookupError:
-            pass
-        return audio, False
-
-    if proc.returncode != 0 or not out:
-        detail = (err or b"").decode("utf-8", "replace").strip()[:300]
-        logger.warning("ffmpeg enhancement failed (rc=%s): %s", proc.returncode, detail)
-        return audio, False
-
-    return out, True
+    if proc.returncode != 0 or not proc.stdout:
+        detail = (proc.stderr or b"").decode("utf-8", "replace").strip()[:300]
+        return None, f"rc={proc.returncode}: {detail}"
+    return proc.stdout, None
 
 
 __all__ = ["enhance_wav", "ffmpeg_available", "ffmpeg_binary"]
