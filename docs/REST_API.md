@@ -36,6 +36,7 @@ Content-Type: multipart/form-data
 | `inputLanguage` | no | ISO-639-1 code of the spoken audio. Omit or send `auto` to let Azure detect. |
 | `targetLanguage` | no | ISO-639-1 code to translate into. Required only when `translate=true`. |
 | `translate` | no | `true` / `false` (default `false`). When true the backend translates the transcript via the gpt-4o chat deployment. |
+| `enhance` | no | `true` / `false` (default `false`). When true the backend runs the audio through an ffmpeg filter chain before upload (see below). No-op if ffmpeg is missing. |
 
 ### Response `200 application/json`
 
@@ -47,6 +48,7 @@ Content-Type: multipart/form-data
     { "speaker": "A", "text": "hello",     "translation": "hola" },
     { "speaker": "B", "text": "hi there",  "translation": "hola" }
   ],
+  "enhanced": true,               // whether the ffmpeg enhancement pass actually ran
   "transcribeMs": 812,            // server-measured Azure transcription time
   "translateMs": 143              // server-measured translation time (0 when skipped)
 }
@@ -124,6 +126,27 @@ translated). Parsing is defensive: if Azure returns only a flat `text` field for
 a diarized request (a known inconsistency on some api-versions), the backend
 falls back to that text. With the default `AZURE_TRANSCRIBE_RESPONSE_FORMAT=json`
 the diarize model still works, just without speaker labels.
+
+## Audio enhancement
+
+There are two independent cleanup layers, both optional and both off-by-default only
+where noted:
+
+1. **Browser cleanup (both modes, on by default).** The capture pipeline enables the
+   browser's `noiseSuppression`, `echoCancellation`, and `autoGainControl`. Toggle it
+   with the UI's "Audio cleanup" switch. For diarization, aggressive suppression can
+   occasionally blur speaker cues, so it is toggleable.
+2. **Server ffmpeg pass (REST only, off by default).** When the request sends
+   `enhance=true` and ffmpeg is installed, the WAV is piped through
+   `AUDIO_ENHANCE_FILTERS` (default `highpass=f=80,afftdn=nf=-25,loudnorm=...`) before
+   upload — high-pass to drop rumble, `afftdn` to denoise, `loudnorm` to normalize
+   loudness. If ffmpeg is missing or the pass fails, the original audio is used and
+   `enhanced` is `false`. ffmpeg ships in both backend Docker images; for a local
+   (non-Docker) run, install it (`apt install ffmpeg` / `brew install ffmpeg`).
+
+The realtime WebSocket mode additionally gets Azure's own `near_field` noise reduction
+server-side; the REST endpoint has no such Azure-side option, which is why the ffmpeg
+pass exists.
 
 ## Browser-side audio storage
 

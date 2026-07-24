@@ -37,6 +37,10 @@ them from a dropdown in the UI.
 - **Browser-stored recordings** — every session is saved in your browser (IndexedDB)
   with **Play**, **Download** (.wav), and **Transcribe full** (re-run REST on the same
   audio to compare) — no audio is stored server-side.
+- **Audio cleanup + enhancement** — browser noise suppression / echo cancel / auto-gain
+  (on by default, both modes), plus an optional server-side ffmpeg pass for REST
+  (high-pass + denoise + loudness-normalize). Realtime mode also uses Azure's own
+  server-side noise reduction.
 - **Two backends, one protocol** — switch Python ⇆ .NET from the UI; identical behavior.
 - **Transcript export** — download the full session as `.txt`, `.srt`, or `.json`.
 - **Voice-activity indicator** driven by Azure server-side VAD (realtime mode).
@@ -69,6 +73,9 @@ command below runs in its own terminal and keeps running.
 - **Python backend:** Python 3.11+
 - **.NET backend:** .NET 8 SDK
 - **Frontend:** Node 20+ (includes npm)
+- **Optional:** `ffmpeg` on PATH — only needed for the REST "Server enhance" toggle
+  (`apt install ffmpeg` / `brew install ffmpeg`). Already included in the Docker images.
+  Without it, that toggle is a safe no-op.
 
 ### Step 1 — Set up Azure and credentials
 

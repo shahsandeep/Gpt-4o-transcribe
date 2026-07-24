@@ -85,6 +85,19 @@ Every session's audio is stored in the browser via **IndexedDB**
 Nothing is uploaded except when you explicitly transcribe; recordings never leave the
 browser otherwise.
 
+## Audio cleanup & enhancement
+
+Two toggles in the controls:
+
+- **Audio cleanup** (default on, both modes) — sets `noiseSuppression`,
+  `echoCancellation`, and `autoGainControl` on `getUserMedia`, so the browser's WebRTC
+  processing cleans the mic before capture. Turn it off if it hurts diarization on
+  far-field / multi-speaker audio.
+- **Server enhance (ffmpeg)** (default off, REST modes only) — sends `enhance=true` so
+  the backend runs an ffmpeg filter chain (high-pass + denoise + loudness normalize)
+  before uploading to Azure. The response's `enhanced` flag says whether it actually
+  ran (it's a no-op if the backend has no ffmpeg).
+
 ## Speaker diarization
 
 With a diarize deployment (`AZURE_TRANSCRIBE_RESPONSE_FORMAT=diarized_json`), the REST
