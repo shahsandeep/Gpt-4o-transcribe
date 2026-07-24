@@ -98,3 +98,43 @@ export async function postTranscribe(
     translateError: json.translateError,
   };
 }
+
+/**
+ * POST audio to /rest/enhance and get the ffmpeg-enhanced WAV back (for A/B
+ * playback). Throws with the backend's message on 422 (ffmpeg missing/failed).
+ */
+export async function postEnhance(
+  backend: Backend,
+  blob: Blob,
+  fileName: string,
+  signal?: AbortSignal,
+): Promise<Blob> {
+  const fd = new FormData();
+  fd.append('file', blob, fileName);
+
+  let res: Response;
+  try {
+    res = await fetch(`${httpBaseFor(backend)}/rest/enhance`, {
+      method: 'POST',
+      body: fd,
+      signal,
+    });
+  } catch (e) {
+    throw new Error(
+      e instanceof Error ? `Could not reach backend: ${e.message}` : 'Could not reach backend',
+    );
+  }
+
+  if (!res.ok) {
+    let msg = `Enhancement failed (HTTP ${res.status}).`;
+    try {
+      const j = (await res.json()) as { error?: string };
+      if (j?.error) msg = j.error;
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new Error(msg);
+  }
+
+  return res.blob();
+}

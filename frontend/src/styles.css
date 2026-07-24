@@ -888,3 +888,50 @@ code {
   border-left: 3px solid var(--border);
   padding: 2px 0 2px 12px;
 }
+
+/* --------------------------------------------------------------- A/B compare */
+
+.rec-compare {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border-soft);
+}
+
+.ab-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+@media (max-width: 620px) {
+  .ab-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ab-side {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ab-tag-orig {
+  color: var(--text-faint);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-soft);
+}
+
+.ab-tag-enh {
+  color: var(--green);
+  background: var(--green-soft);
+}
+
+.ab-download {
+  font-size: 12px;
+  color: var(--text-dim);
+  text-decoration: none;
+}
+
+.ab-download:hover {
+  color: var(--accent);
+}

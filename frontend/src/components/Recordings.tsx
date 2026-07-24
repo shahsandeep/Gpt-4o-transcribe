@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Backend } from '../lib/backends';
-import { postTranscribe, type RestSegment } from '../lib/rest';
+import { postEnhance, postTranscribe, type RestSegment } from '../lib/rest';
 import { speakerColor, speakerName } from '../lib/speakers';
 import { languageName } from '../lib/languages';
 import {
@@ -25,6 +25,13 @@ interface RowResult {
   translation?: string | null;
   segments?: RestSegment[];
   ms?: number;
+  error?: string;
+}
+
+interface RowCompare {
+  loading?: boolean;
+  origUrl?: string;
+  enhUrl?: string;
   error?: string;
 }
 
@@ -53,7 +60,10 @@ export function Recordings({
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, RowResult>>({});
+  const [compares, setCompares] = useState<Record<string, RowCompare>>({});
   const urlRef = useRef<string | null>(null);
+  // Object URLs for the A/B players, tracked per recording so we can revoke them.
+  const compareUrls = useRef<Map<string, { orig: string; enh: string }>>(new Map());
 
   const revokeUrl = useCallback(() => {
     if (urlRef.current) {
@@ -62,7 +72,26 @@ export function Recordings({
     }
   }, []);
 
-  useEffect(() => revokeUrl, [revokeUrl]);
+  const revokeCompare = useCallback((id: string) => {
+    const urls = compareUrls.current.get(id);
+    if (urls) {
+      URL.revokeObjectURL(urls.orig);
+      URL.revokeObjectURL(urls.enh);
+      compareUrls.current.delete(id);
+    }
+  }, []);
+
+  useEffect(() => {
+    const urls = compareUrls.current;
+    return () => {
+      revokeUrl();
+      urls.forEach(({ orig, enh }) => {
+        URL.revokeObjectURL(orig);
+        URL.revokeObjectURL(enh);
+      });
+      urls.clear();
+    };
+  }, [revokeUrl]);
 
   const play = useCallback(
     async (id: string) => {
@@ -124,6 +153,28 @@ export function Recordings({
     [backend, inputLanguage, targetLanguage, translate, enhance],
   );
 
+  const compareAB = useCallback(
+    async (id: string) => {
+      const rec = await getRecording(id);
+      if (!rec) return;
+      setCompares((prev) => ({ ...prev, [id]: { loading: true } }));
+      try {
+        const enhBlob = await postEnhance(backend, rec.blob, `${rec.name}.wav`);
+        revokeCompare(id);
+        const origUrl = URL.createObjectURL(rec.blob);
+        const enhUrl = URL.createObjectURL(enhBlob);
+        compareUrls.current.set(id, { orig: origUrl, enh: enhUrl });
+        setCompares((prev) => ({ ...prev, [id]: { origUrl, enhUrl } }));
+      } catch (e) {
+        setCompares((prev) => ({
+          ...prev,
+          [id]: { error: e instanceof Error ? e.message : 'Enhancement failed.' },
+        }));
+      }
+    },
+    [backend, revokeCompare],
+  );
+
   const remove = useCallback(
     async (id: string) => {
       if (playingId === id) {
@@ -131,15 +182,21 @@ export function Recordings({
         setAudioUrl(null);
         revokeUrl();
       }
+      revokeCompare(id);
       await deleteRecording(id);
       setResults((prev) => {
         const next = { ...prev };
         delete next[id];
         return next;
       });
+      setCompares((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
       onChanged();
     },
-    [onChanged, playingId, revokeUrl],
+    [onChanged, playingId, revokeUrl, revokeCompare],
   );
 
   const originalTag =
@@ -166,6 +223,7 @@ export function Recordings({
       <ul className="rec-list">
         {recordings.map((r) => {
           const res = results[r.id];
+          const cmp = compares[r.id];
           return (
             <li key={r.id} className={`rec-item ${playingId === r.id ? 'playing' : ''}`}>
               <div className="rec-head">
@@ -191,6 +249,15 @@ export function Recordings({
                     title="Send the whole file at once via REST"
                   >
                     {res?.loading ? '…' : 'Transcribe full'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn ghost small"
+                    onClick={() => compareAB(r.id)}
+                    disabled={cmp?.loading}
+                    title="Play original vs ffmpeg-enhanced audio side by side"
+                  >
+                    {cmp?.loading ? '…' : '🎧 Compare A/B'}
                   </button>
                   <button
                     type="button"
@@ -257,6 +324,28 @@ export function Recordings({
                         <div className="rec-timing">{res.ms} ms round-trip</div>
                       )}
                     </>
+                  )}
+                </div>
+              )}
+              {cmp && !cmp.loading && (cmp.error || cmp.enhUrl) && (
+                <div className="rec-compare">
+                  {cmp.error && <div className="rec-error">{cmp.error}</div>}
+                  {cmp.enhUrl && cmp.origUrl && (
+                    <div className="ab-grid">
+                      <div className="ab-side">
+                        <span className="line-tag ab-tag-orig">Original</span>
+                        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                        <audio className="rec-player" src={cmp.origUrl} controls />
+                      </div>
+                      <div className="ab-side">
+                        <span className="line-tag ab-tag-enh">Enhanced (ffmpeg)</span>
+                        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                        <audio className="rec-player" src={cmp.enhUrl} controls />
+                        <a className="ab-download" href={cmp.enhUrl} download={`${r.name}-enhanced.wav`}>
+                          ⭳ Download enhanced
+                        </a>
+                      </div>
+                    </div>
                   )}
                 </div>
               )}

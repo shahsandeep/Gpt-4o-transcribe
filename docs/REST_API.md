@@ -148,6 +148,23 @@ The realtime WebSocket mode additionally gets Azure's own `near_field` noise red
 server-side; the REST endpoint has no such Azure-side option, which is why the ffmpeg
 pass exists.
 
+### `POST /rest/enhance` (A/B preview)
+
+Returns the ffmpeg-enhanced version of an uploaded WAV so the UI can play original
+vs enhanced side by side.
+
+```
+POST http://<host>:<port>/rest/enhance
+Content-Type: multipart/form-data   (field: file)
+```
+
+- **200 `audio/wav`** — the enhanced audio bytes.
+- **422 `application/json`** `{ "error": "audio enhancement unavailable (ffmpeg missing or filter failed)" }`
+  — so the UI reports it rather than silently returning the original.
+
+The Recordings panel's **Compare A/B** button uses this: it plays the stored original
+against the enhanced result and offers the enhanced WAV as a download.
+
 ## Browser-side audio storage
 
 Independent of transcription mode, the frontend saves each finished recording as a

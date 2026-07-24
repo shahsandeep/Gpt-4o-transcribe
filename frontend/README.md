@@ -98,6 +98,11 @@ Two toggles in the controls:
   before uploading to Azure. The response's `enhanced` flag says whether it actually
   ran (it's a no-op if the backend has no ffmpeg).
 
+Each saved recording also has a **Compare A/B** button: it calls `/rest/enhance` and
+plays the **original** vs the **ffmpeg-enhanced** audio side by side (with a download
+for the enhanced WAV), so you can hear exactly what the filter chain is doing before
+trusting it for transcription.
+
 ## Speaker diarization
 
 With a diarize deployment (`AZURE_TRANSCRIBE_RESPONSE_FORMAT=diarized_json`), the REST
