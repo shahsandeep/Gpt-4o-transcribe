@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using TranscribeApi.Config;
 
 namespace TranscribeApi.Audio;
 
@@ -12,17 +13,42 @@ namespace TranscribeApi.Audio;
 public sealed class AudioEnhancer
 {
     private readonly ILogger<AudioEnhancer> _logger;
-    private bool? _ffmpegAvailable;
+    private readonly AzureOptions _options;
+    private string? _binary; // null = unresolved; "" = unavailable; else executable/command
 
-    public AudioEnhancer(ILogger<AudioEnhancer> logger)
+    public AudioEnhancer(ILogger<AudioEnhancer> logger, AzureOptions options)
     {
         _logger = logger;
+        _options = options;
     }
 
-    private bool FfmpegAvailable()
+    /// <summary>
+    /// Resolve the ffmpeg executable. FFMPEG_PATH may be the full path to the
+    /// executable or the folder that contains it; empty means look up "ffmpeg" on
+    /// PATH. Returns "" when ffmpeg can't be found. Cached after the first call.
+    /// </summary>
+    private string ResolveBinary()
     {
-        if (_ffmpegAvailable is not null) return _ffmpegAvailable.Value;
+        if (_binary is not null) return _binary;
 
+        var configured = (_options.FfmpegPath ?? "").Trim().Trim('"');
+        if (configured.Length > 0)
+        {
+            if (Directory.Exists(configured))
+            {
+                foreach (var name in new[] { "ffmpeg.exe", "ffmpeg" })
+                {
+                    var candidate = Path.Combine(configured, name);
+                    if (File.Exists(candidate)) { _binary = candidate; return _binary; }
+                }
+                _binary = "";
+                return _binary;
+            }
+            _binary = File.Exists(configured) ? configured : "";
+            return _binary;
+        }
+
+        // No override: probe "ffmpeg" on PATH.
         try
         {
             using var probe = Process.Start(new ProcessStartInfo
@@ -34,14 +60,16 @@ public sealed class AudioEnhancer
                 UseShellExecute = false,
             });
             probe?.WaitForExit(3000);
-            _ffmpegAvailable = probe is not null;
+            _binary = probe is not null ? "ffmpeg" : "";
         }
         catch
         {
-            _ffmpegAvailable = false;
+            _binary = "";
         }
-        return _ffmpegAvailable.Value;
+        return _binary;
     }
+
+    private bool FfmpegAvailable() => ResolveBinary().Length > 0;
 
     /// <summary>
     /// Run <paramref name="audio"/> (a WAV blob) through an ffmpeg filter chain.
@@ -61,7 +89,7 @@ public sealed class AudioEnhancer
 
         var psi = new ProcessStartInfo
         {
-            FileName = "ffmpeg",
+            FileName = ResolveBinary(),
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,

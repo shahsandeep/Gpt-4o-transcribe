@@ -73,9 +73,11 @@ command below runs in its own terminal and keeps running.
 - **Python backend:** Python 3.11+
 - **.NET backend:** .NET 8 SDK
 - **Frontend:** Node 20+ (includes npm)
-- **Optional:** `ffmpeg` on PATH — only needed for the REST "Server enhance" toggle
+- **Optional:** `ffmpeg` — only needed for the REST "Server enhance" toggle
   (`apt install ffmpeg` / `brew install ffmpeg`). Already included in the Docker images.
-  Without it, that toggle is a safe no-op.
+  Without it, that toggle is a safe no-op. If ffmpeg isn't on PATH (e.g. a portable
+  Windows build you can't install), set **`FFMPEG_PATH`** in `.env` to the `ffmpeg.exe`
+  or its `bin` folder — no PATH editing needed.
 
 ### Step 1 — Set up Azure and credentials
 

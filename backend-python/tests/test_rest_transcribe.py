@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 
-from app.audio_enhance import enhance_wav, ffmpeg_available
+from app.audio_enhance import enhance_wav, ffmpeg_available, ffmpeg_binary
 from app.config import Settings
 from app.main import _parse_bool
 from app.rest_transcribe import format_transcript, join_turns, parse_segments
@@ -220,6 +220,29 @@ def test_join_turns_labels_and_field():
 
 
 # ---------- audio enhancement (offline) ----------
+
+
+def test_ffmpeg_binary_resolves_folder_and_file(tmp_path):
+    # A folder containing ffmpeg.exe resolves to that exe.
+    exe = tmp_path / "ffmpeg.exe"
+    exe.write_bytes(b"stub")
+    assert ffmpeg_binary(str(tmp_path)) == str(exe)
+    # A direct path to the executable resolves to itself.
+    assert ffmpeg_binary(str(exe)) == str(exe)
+    # A quoted value is accepted (quotes stripped).
+    assert ffmpeg_binary(f'"{exe}"') == str(exe)
+
+
+def test_ffmpeg_binary_missing_configured_path_returns_none(tmp_path):
+    assert ffmpeg_binary(str(tmp_path / "nope.exe")) is None
+    assert ffmpeg_binary(str(tmp_path)) is None  # empty folder, no ffmpeg inside
+
+
+def test_ffmpeg_available_with_configured_path(tmp_path):
+    exe = tmp_path / "ffmpeg"
+    exe.write_bytes(b"stub")
+    assert ffmpeg_available(str(tmp_path)) is True
+    assert ffmpeg_available(str(tmp_path / "missing")) is False
 
 
 def test_enhance_wav_empty_filters_is_noop():

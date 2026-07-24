@@ -11,33 +11,57 @@ from __future__ import annotations
 import asyncio
 import logging
 import shutil
+from pathlib import Path
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 
-def ffmpeg_available() -> bool:
-    """True when an `ffmpeg` binary is on PATH."""
-    return shutil.which("ffmpeg") is not None
+def ffmpeg_binary(configured: str = "") -> Optional[str]:
+    """Resolve the ffmpeg executable.
+
+    `configured` (from FFMPEG_PATH) may be the full path to the executable or the
+    folder that contains it. When empty, "ffmpeg" is looked up on PATH. Returns
+    the resolved path/command, or None when ffmpeg can't be found.
+    """
+    configured = (configured or "").strip().strip('"')
+    if configured:
+        p = Path(configured)
+        if p.is_dir():
+            for name in ("ffmpeg.exe", "ffmpeg"):
+                candidate = p / name
+                if candidate.exists():
+                    return str(candidate)
+            return None
+        return str(p) if p.exists() else None
+    return shutil.which("ffmpeg")
+
+
+def ffmpeg_available(configured: str = "") -> bool:
+    """True when ffmpeg can be resolved (via FFMPEG_PATH or PATH)."""
+    return ffmpeg_binary(configured) is not None
 
 
 async def enhance_wav(
-    audio: bytes, filters: str, timeout_s: float = 60.0
+    audio: bytes, filters: str, ffmpeg_path: str = "", timeout_s: float = 60.0
 ) -> tuple[bytes, bool]:
     """Run `audio` (a WAV blob) through an ffmpeg filter chain.
 
-    Returns `(processed_bytes, enhanced)`. On any failure — ffmpeg absent, a
-    non-zero exit, empty output, or timeout — returns `(audio, False)` so the
-    caller can proceed with the original audio.
+    `ffmpeg_path` is the FFMPEG_PATH override (executable or its folder); empty
+    means use PATH. Returns `(processed_bytes, enhanced)`. On any failure —
+    ffmpeg absent, a non-zero exit, empty output, or timeout — returns
+    `(audio, False)` so the caller can proceed with the original audio.
     """
     if not filters.strip():
         return audio, False
-    if not ffmpeg_available():
-        logger.info("Audio enhancement requested but ffmpeg is not installed; skipping")
+    binary = ffmpeg_binary(ffmpeg_path)
+    if binary is None:
+        logger.info("Audio enhancement requested but ffmpeg was not found; skipping")
         return audio, False
 
     # Read WAV from stdin, apply filters, write WAV (mono, 24 kHz) to stdout.
     cmd = [
-        "ffmpeg",
+        binary,
         "-hide_banner",
         "-loglevel",
         "error",
@@ -83,4 +107,4 @@ async def enhance_wav(
     return out, True
 
 
-__all__ = ["enhance_wav", "ffmpeg_available"]
+__all__ = ["enhance_wav", "ffmpeg_available", "ffmpeg_binary"]

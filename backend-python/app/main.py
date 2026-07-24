@@ -65,7 +65,9 @@ async def rest_transcribe(
     # Optional server-side ffmpeg enhancement before upload (graceful fallback).
     enhanced = False
     if _parse_bool(enhance_flag):
-        audio, enhanced = await enhance_wav(audio, settings.audio_enhance_filters)
+        audio, enhanced = await enhance_wav(
+            audio, settings.audio_enhance_filters, settings.ffmpeg_path
+        )
 
     try:
         turns, transcribe_ms = await transcribe_audio(
@@ -133,7 +135,9 @@ async def rest_enhance(file: UploadFile = File(...)) -> Response:
     """
     settings = get_settings()
     audio = await file.read()
-    enhanced_bytes, enhanced = await enhance_wav(audio, settings.audio_enhance_filters)
+    enhanced_bytes, enhanced = await enhance_wav(
+        audio, settings.audio_enhance_filters, settings.ffmpeg_path
+    )
     if not enhanced:
         return JSONResponse(
             status_code=422,

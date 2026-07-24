@@ -56,6 +56,9 @@ public sealed class AzureOptions
     // --- Optional server-side ffmpeg audio enhancement (REST mode) ---
     public string AudioEnhanceFilters { get; init; } =
         "highpass=f=80,afftdn=nf=-25,loudnorm=I=-16:TP=-1.5:LRA=11";
+    // Where to find ffmpeg when it's NOT on PATH: the full path to the executable
+    // OR the folder that contains it. Empty = look up "ffmpeg" on PATH.
+    public string FfmpegPath { get; init; } = "";
 
     // --- Server ---
     public int Port { get; init; } = 8080;
@@ -86,6 +89,7 @@ public sealed class AzureOptions
             AudioEnhanceFilters = Env(
                 "AUDIO_ENHANCE_FILTERS",
                 "highpass=f=80,afftdn=nf=-25,loudnorm=I=-16:TP=-1.5:LRA=11"),
+            FfmpegPath = Env("FFMPEG_PATH", ""),
 
             Port = EnvInt("DOTNET_PORT", 8080),
         };

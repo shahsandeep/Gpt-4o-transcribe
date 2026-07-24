@@ -72,12 +72,16 @@ class Settings(BaseSettings):
     vad_silence_duration_ms: int = Field(default=500, alias="VAD_SILENCE_DURATION_MS")
 
     # --- Optional server-side ffmpeg audio enhancement (REST mode) ---
-    # Applied before upload when the request asks for it AND ffmpeg is installed.
+    # Applied before upload when the request asks for it AND ffmpeg is available.
     # highpass removes rumble; afftdn denoises; loudnorm normalizes loudness.
     audio_enhance_filters: str = Field(
         default="highpass=f=80,afftdn=nf=-25,loudnorm=I=-16:TP=-1.5:LRA=11",
         alias="AUDIO_ENHANCE_FILTERS",
     )
+    # Where to find ffmpeg when it's NOT on PATH. Accepts a full path to the
+    # executable OR the folder containing it (e.g. a portable build's bin dir).
+    # Empty = look up "ffmpeg" on PATH.
+    ffmpeg_path: str = Field(default="", alias="FFMPEG_PATH")
 
     # --- Server ---
     python_port: int = Field(default=8000, alias="PYTHON_PORT")
