@@ -26,6 +26,11 @@ interface ControlsProps {
   translate: boolean;
   onTranslateChange: (on: boolean) => void;
 
+  audioCleanup: boolean;
+  onAudioCleanupChange: (on: boolean) => void;
+  serverEnhance: boolean;
+  onServerEnhanceChange: (on: boolean) => void;
+
   isActive: boolean;
   onStart: () => void;
   onStop: () => void;
@@ -49,12 +54,17 @@ export function Controls(props: ControlsProps) {
     onTargetLanguageChange,
     translate,
     onTranslateChange,
+    audioCleanup,
+    onAudioCleanupChange,
+    serverEnhance,
+    onServerEnhanceChange,
     isActive,
     onStart,
     onStop,
   } = props;
 
   const noDevices = devices.length === 0;
+  const isRest = mode !== 'websocket';
 
   return (
     <div className="controls">
@@ -170,6 +180,50 @@ export function Controls(props: ControlsProps) {
           >
             <span className="toggle-knob" />
             <span className="toggle-text">{translate ? 'On' : 'Off'}</span>
+          </button>
+        </label>
+      </div>
+
+      <div className="controls-row">
+        <label className="field toggle-field">
+          <span className="field-label" title="Browser noise suppression, echo cancellation, and auto gain">
+            Audio cleanup
+          </span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={audioCleanup}
+            className={`toggle ${audioCleanup ? 'on' : ''}`}
+            onClick={() => onAudioCleanupChange(!audioCleanup)}
+            disabled={isActive}
+          >
+            <span className="toggle-knob" />
+            <span className="toggle-text">{audioCleanup ? 'On' : 'Off'}</span>
+          </button>
+        </label>
+
+        <label className="field toggle-field">
+          <span
+            className="field-label"
+            title={
+              isRest
+                ? 'Server-side ffmpeg pass (high-pass, denoise, loudness normalize) before upload'
+                : 'Server enhance applies to the REST modes only'
+            }
+          >
+            Server enhance (ffmpeg)
+          </span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={serverEnhance && isRest}
+            className={`toggle ${serverEnhance && isRest ? 'on' : ''}`}
+            onClick={() => onServerEnhanceChange(!serverEnhance)}
+            disabled={isActive || !isRest}
+            title={isRest ? undefined : 'Available in REST modes only'}
+          >
+            <span className="toggle-knob" />
+            <span className="toggle-text">{serverEnhance && isRest ? 'On' : 'Off'}</span>
           </button>
         </label>
       </div>

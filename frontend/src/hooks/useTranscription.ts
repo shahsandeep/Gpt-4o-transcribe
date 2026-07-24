@@ -163,6 +163,7 @@ export function useTranscription(): Transcriber {
     captureRef.current = capture;
     await capture.start({
       deviceId: opts.deviceId,
+      audioCleanup: opts.audioCleanup,
       onChunk: (chunk) => {
         const ws = wsRef.current;
         if (!startedRef.current || !ws || ws.readyState !== WebSocket.OPEN) return;

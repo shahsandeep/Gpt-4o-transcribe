@@ -15,6 +15,8 @@ export interface RestResult {
   translation: string | null;
   /** Per-speaker-turn breakdown (one speaker-less entry when not diarized). */
   segments: RestSegment[];
+  /** True when the backend actually ran the ffmpeg enhancement pass. */
+  enhanced: boolean;
   transcribeMs: number;
   translateMs: number;
   translateError?: string;
@@ -26,6 +28,8 @@ export interface RestTranscribeParams {
   inputLanguage: string; // "" or "auto" → let Azure detect
   targetLanguage: string;
   translate: boolean;
+  /** Ask the backend to ffmpeg-enhance the audio before upload. */
+  enhance?: boolean;
 }
 
 /** http(s)://host:port base for a backend's REST calls. */
@@ -47,6 +51,7 @@ export async function postTranscribe(
   }
   fd.append('targetLanguage', params.targetLanguage);
   fd.append('translate', String(params.translate));
+  if (params.enhance) fd.append('enhance', 'true');
 
   let res: Response;
   try {
@@ -87,6 +92,7 @@ export async function postTranscribe(
     transcript,
     translation: json.translation ?? null,
     segments,
+    enhanced: json.enhanced ?? false,
     transcribeMs: json.transcribeMs ?? 0,
     translateMs: json.translateMs ?? 0,
     translateError: json.translateError,

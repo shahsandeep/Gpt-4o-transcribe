@@ -9,6 +9,8 @@
 
 export interface PcmCaptureOptions {
   deviceId: string | null;
+  /** Enable the browser's noise suppression / echo cancel / auto-gain. Default true. */
+  audioCleanup?: boolean;
   /** Called for every ~100 ms Int16 chunk as it is captured. */
   onChunk?: (chunk: Int16Array) => void;
 }
@@ -39,12 +41,17 @@ export class PcmCapture {
       new URL('../worklets/pcm-worklet.js', import.meta.url).href,
     );
 
-    const constraints: MediaStreamConstraints = {
-      audio: opts.deviceId
-        ? { deviceId: { exact: opts.deviceId }, channelCount: 1 }
-        : { channelCount: 1 },
+    // Explicitly drive the browser's built-in cleanup (WebRTC noise suppression,
+    // echo cancellation, auto gain) instead of relying on undefined defaults.
+    const cleanup = opts.audioCleanup !== false;
+    const audio: MediaTrackConstraints = {
+      channelCount: 1,
+      noiseSuppression: cleanup,
+      echoCancellation: cleanup,
+      autoGainControl: cleanup,
     };
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    if (opts.deviceId) audio.deviceId = { exact: opts.deviceId };
+    const stream = await navigator.mediaDevices.getUserMedia({ audio });
     this.stream = stream;
 
     const source = ctx.createMediaStreamSource(stream);

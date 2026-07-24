@@ -146,6 +146,10 @@ export interface StartOptions {
   inputLanguage: string;
   targetLanguage: string;
   translate: boolean;
+  /** Browser-side cleanup (noiseSuppression + echoCancellation + autoGainControl). */
+  audioCleanup: boolean;
+  /** REST only: ask the backend to ffmpeg-enhance the audio before upload. */
+  serverEnhance: boolean;
   /** Which backend to talk to (host/port); the hook derives ws:// or http://). */
   backendId: string;
   /** Called after a recording is persisted to IndexedDB (to refresh the list). */

@@ -14,6 +14,7 @@ interface RecordingsProps {
   inputLanguage: string;
   targetLanguage: string;
   translate: boolean;
+  enhance: boolean;
   onChanged: () => void;
 }
 
@@ -45,6 +46,7 @@ export function Recordings({
   inputLanguage,
   targetLanguage,
   translate,
+  enhance,
   onChanged,
 }: RecordingsProps) {
   const [playingId, setPlayingId] = useState<string | null>(null);
@@ -99,6 +101,7 @@ export function Recordings({
           inputLanguage,
           targetLanguage,
           translate,
+          enhance,
         });
         setResults((prev) => ({
           ...prev,
@@ -117,7 +120,7 @@ export function Recordings({
         }));
       }
     },
-    [backend, inputLanguage, targetLanguage, translate],
+    [backend, inputLanguage, targetLanguage, translate, enhance],
   );
 
   const remove = useCallback(

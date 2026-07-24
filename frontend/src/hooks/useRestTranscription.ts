@@ -87,6 +87,7 @@ export function useRestTranscription(mode: 'rest-batched' | 'rest-full'): Transc
             inputLanguage: opts.inputLanguage,
             targetLanguage: opts.targetLanguage,
             translate: opts.translate,
+            enhance: opts.serverEnhance,
           },
           abortRef.current?.signal,
         );
@@ -190,6 +191,7 @@ export function useRestTranscription(mode: 'rest-batched' | 'rest-full'): Transc
       try {
         await capture.start({
           deviceId: opts.deviceId,
+          audioCleanup: opts.audioCleanup,
           onChunk: (chunk) => {
             if (modeRef.current === 'rest-batched') rollingRef.current.push(chunk);
             // rest-full: capture accumulates everything; nothing to do per chunk.

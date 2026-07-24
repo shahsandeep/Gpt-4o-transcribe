@@ -34,6 +34,8 @@ export default function App() {
   const [inputLanguage, setInputLanguage] = useState('auto');
   const [targetLanguage, setTargetLanguage] = useState('es');
   const [translate, setTranslate] = useState(true);
+  const [audioCleanup, setAudioCleanup] = useState(true);
+  const [serverEnhance, setServerEnhance] = useState(false);
   const [recordings, setRecordings] = useState<RecordingMeta[]>([]);
 
   // Both pipelines exist; the active one is chosen by mode. (Hooks must run
@@ -73,10 +75,22 @@ export default function App() {
       inputLanguage,
       targetLanguage,
       translate,
+      audioCleanup,
+      serverEnhance,
       backendId,
       onRecordingSaved: refreshRecordings,
     });
-  }, [start, selectedDeviceId, inputLanguage, targetLanguage, translate, backendId, refreshRecordings]);
+  }, [
+    start,
+    selectedDeviceId,
+    inputLanguage,
+    targetLanguage,
+    translate,
+    audioCleanup,
+    serverEnhance,
+    backendId,
+    refreshRecordings,
+  ]);
 
   const handleTargetLanguageChange = useCallback(
     (code: string) => {
@@ -172,6 +186,10 @@ export default function App() {
             onTargetLanguageChange={handleTargetLanguageChange}
             translate={translate}
             onTranslateChange={handleTranslateChange}
+            audioCleanup={audioCleanup}
+            onAudioCleanupChange={setAudioCleanup}
+            serverEnhance={serverEnhance}
+            onServerEnhanceChange={setServerEnhance}
             isActive={isActive}
             onStart={handleStart}
             onStop={stop}
@@ -216,6 +234,7 @@ export default function App() {
           inputLanguage={inputLanguage}
           targetLanguage={targetLanguage}
           translate={translate}
+          enhance={serverEnhance}
           onChanged={refreshRecordings}
         />
       </section>
