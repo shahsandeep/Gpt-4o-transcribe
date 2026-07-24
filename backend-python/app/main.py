@@ -10,7 +10,7 @@ import asyncio
 import logging
 import time
 
-from fastapi import FastAPI, File, Form, UploadFile, WebSocket
+from fastapi import FastAPI, File, Form, Response, UploadFile, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -122,6 +122,24 @@ async def rest_transcribe(
             result["translateError"] = translate_error
 
     return JSONResponse(content=result)
+
+
+@app.post("/rest/enhance")
+async def rest_enhance(file: UploadFile = File(...)) -> Response:
+    """Return the ffmpeg-enhanced version of an uploaded WAV, for A/B comparison.
+
+    200 audio/wav on success; 422 when enhancement can't run (ffmpeg missing or
+    the filter chain failed), so the UI can say so rather than play the original.
+    """
+    settings = get_settings()
+    audio = await file.read()
+    enhanced_bytes, enhanced = await enhance_wav(audio, settings.audio_enhance_filters)
+    if not enhanced:
+        return JSONResponse(
+            status_code=422,
+            content={"error": "audio enhancement unavailable (ffmpeg missing or filter failed)"},
+        )
+    return Response(content=enhanced_bytes, media_type="audio/wav")
 
 
 @app.websocket("/ws/transcribe")

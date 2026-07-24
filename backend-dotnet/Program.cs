@@ -188,6 +188,50 @@ app.MapPost("/rest/transcribe", async (HttpContext context) =>
     return Results.Json(result);
 });
 
+// --- REST audio enhancement preview (for A/B comparison) ---
+// Returns the ffmpeg-enhanced WAV so the UI can play original vs enhanced.
+app.MapPost("/rest/enhance", async (HttpContext context) =>
+{
+    if (!context.Request.HasFormContentType)
+    {
+        return Results.Json(
+            new { error = "expected multipart/form-data" },
+            statusCode: StatusCodes.Status415UnsupportedMediaType);
+    }
+
+    var options = context.RequestServices.GetRequiredService<AzureOptions>();
+    var enhancer = context.RequestServices.GetRequiredService<AudioEnhancer>();
+
+    var form = await context.Request.ReadFormAsync(context.RequestAborted);
+    var file = form.Files["file"];
+    if (file is null)
+    {
+        return Results.Json(
+            new { error = "missing file" },
+            statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    byte[] audio;
+    await using (var stream = file.OpenReadStream())
+    using (var ms = new MemoryStream())
+    {
+        await stream.CopyToAsync(ms, context.RequestAborted);
+        audio = ms.ToArray();
+    }
+
+    var (outAudio, enhanced) = await enhancer.EnhanceAsync(
+        audio, options.AudioEnhanceFilters, context.RequestAborted);
+
+    if (!enhanced)
+    {
+        return Results.Json(
+            new { error = "audio enhancement unavailable (ffmpeg missing or filter failed)" },
+            statusCode: StatusCodes.Status422UnprocessableEntity);
+    }
+
+    return Results.File(outAudio, "audio/wav");
+});
+
 // --- WebSocket transcription endpoint ---
 app.Map("/ws/transcribe", async (HttpContext context) =>
 {
