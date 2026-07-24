@@ -71,6 +71,14 @@ class Settings(BaseSettings):
     vad_prefix_padding_ms: int = Field(default=300, alias="VAD_PREFIX_PADDING_MS")
     vad_silence_duration_ms: int = Field(default=500, alias="VAD_SILENCE_DURATION_MS")
 
+    # --- Optional server-side ffmpeg audio enhancement (REST mode) ---
+    # Applied before upload when the request asks for it AND ffmpeg is installed.
+    # highpass removes rumble; afftdn denoises; loudnorm normalizes loudness.
+    audio_enhance_filters: str = Field(
+        default="highpass=f=80,afftdn=nf=-25,loudnorm=I=-16:TP=-1.5:LRA=11",
+        alias="AUDIO_ENHANCE_FILTERS",
+    )
+
     # --- Server ---
     python_port: int = Field(default=8000, alias="PYTHON_PORT")
 

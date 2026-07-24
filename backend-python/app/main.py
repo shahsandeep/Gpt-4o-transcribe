@@ -14,6 +14,7 @@ from fastapi import FastAPI, File, Form, UploadFile, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from .audio_enhance import enhance_wav
 from .config import get_settings
 from .rest_transcribe import TranscriptionError, join_turns, transcribe_audio
 from .session import TranscriptionSession
@@ -55,10 +56,16 @@ async def rest_transcribe(
     inputLanguage: str | None = Form(None),  # noqa: N803 - matches wire contract
     targetLanguage: str | None = Form(None),  # noqa: N803 - matches wire contract
     translate_flag: str | None = Form(None, alias="translate"),
+    enhance_flag: str | None = Form(None, alias="enhance"),
 ) -> JSONResponse:
     """Transcribe an uploaded audio file via Azure REST, optionally translating."""
     settings = get_settings()
     audio = await file.read()
+
+    # Optional server-side ffmpeg enhancement before upload (graceful fallback).
+    enhanced = False
+    if _parse_bool(enhance_flag):
+        audio, enhanced = await enhance_wav(audio, settings.audio_enhance_filters)
 
     try:
         turns, transcribe_ms = await transcribe_audio(
@@ -81,6 +88,7 @@ async def rest_transcribe(
     result: dict[str, object] = {
         "transcript": transcript,
         "translation": None,
+        "enhanced": enhanced,
         # One entry per speaker turn (speaker is null for non-diarized audio).
         "segments": [
             {"speaker": t.get("speaker"), "text": t.get("text", ""), "translation": None}

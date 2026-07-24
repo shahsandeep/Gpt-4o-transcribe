@@ -7,6 +7,9 @@ Covers:
 
 from __future__ import annotations
 
+import asyncio
+
+from app.audio_enhance import enhance_wav, ffmpeg_available
 from app.config import Settings
 from app.main import _parse_bool
 from app.rest_transcribe import format_transcript, join_turns, parse_segments
@@ -214,3 +217,34 @@ def test_join_turns_labels_and_field():
     ]
     assert join_turns(turns, "text") == "A: hello\nB: bye"
     assert join_turns(turns, "translation") == "A: hola\nB: adios"
+
+
+# ---------- audio enhancement (offline) ----------
+
+
+def test_enhance_wav_empty_filters_is_noop():
+    original = b"RIFFfake-wav-bytes"
+    out, enhanced = asyncio.get_event_loop().run_until_complete(
+        enhance_wav(original, "   ")
+    )
+    assert out is original
+    assert enhanced is False
+
+
+def test_enhance_wav_falls_back_when_ffmpeg_missing():
+    # When ffmpeg isn't installed, enhancement is a graceful no-op (returns original).
+    if ffmpeg_available():
+        # ffmpeg present: bogus filter must still fall back to the original audio.
+        original = b"RIFFnot-real-audio"
+        out, enhanced = asyncio.get_event_loop().run_until_complete(
+            enhance_wav(original, "definitely_not_a_real_filter")
+        )
+        assert out == original
+        assert enhanced is False
+    else:
+        original = b"RIFFnot-real-audio"
+        out, enhanced = asyncio.get_event_loop().run_until_complete(
+            enhance_wav(original, "highpass=f=80")
+        )
+        assert out is original
+        assert enhanced is False
