@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Backend } from '../lib/backends';
 import { postTranscribe, type RestSegment } from '../lib/rest';
 import { speakerColor, speakerName } from '../lib/speakers';
+import { languageName } from '../lib/languages';
 import {
   deleteRecording,
   getRecording,
@@ -141,6 +142,12 @@ export function Recordings({
     [onChanged, playingId, revokeUrl],
   );
 
+  const originalTag =
+    inputLanguage && inputLanguage !== 'auto'
+      ? `Original · ${languageName(inputLanguage)}`
+      : 'Original';
+  const translatedTag = `Translated · ${languageName(targetLanguage)}`;
+
   if (recordings.length === 0) {
     return (
       <div className="recordings empty-recordings">
@@ -216,9 +223,15 @@ export function Recordings({
                                   <span className="speaker-chip" style={{ background: color ?? undefined }}>
                                     {speakerName(s.speaker)}
                                   </span>
-                                  <div className="rec-transcript">{s.text}</div>
+                                  <div className="seg-line original-line">
+                                    <span className="line-tag">{originalTag}</span>
+                                    <div className="line-text">{s.text}</div>
+                                  </div>
                                   {translate && s.translation && (
-                                    <div className="rec-translation">{s.translation}</div>
+                                    <div className="seg-line translation-line">
+                                      <span className="line-tag">{translatedTag}</span>
+                                      <div className="line-text">{s.translation}</div>
+                                    </div>
                                   )}
                                 </div>
                               );
@@ -226,11 +239,17 @@ export function Recordings({
                         </div>
                       ) : (
                         <>
-                          <div className="rec-transcript">
-                            {res.transcript || '(no speech detected)'}
+                          <div className="seg-line original-line">
+                            <span className="line-tag">{originalTag}</span>
+                            <div className="line-text">
+                              {res.transcript || '(no speech detected)'}
+                            </div>
                           </div>
                           {translate && res.translation && (
-                            <div className="rec-translation">{res.translation}</div>
+                            <div className="seg-line translation-line">
+                              <span className="line-tag">{translatedTag}</span>
+                              <div className="line-text">{res.translation}</div>
+                            </div>
                           )}
                         </>
                       )}

@@ -121,9 +121,18 @@ code {
 
 .transcript-panel {
   padding: 0;
-  min-height: 420px;
+  min-height: 360px;
+  /* Bound the panel so a long transcript scrolls INSIDE it instead of growing
+     the whole page. Falls back to min-height on short viewports. */
+  max-height: calc(100vh - 220px);
   display: flex;
   overflow: hidden;
+}
+
+@media (max-width: 860px) {
+  .transcript-panel {
+    max-height: 70vh;
+  }
 }
 
 /* --------------------------------------------------------------- controls */
@@ -501,11 +510,15 @@ code {
 
 .transcript {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  /* Don't chain scroll to the page when the transcript reaches its end. */
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
   padding: 20px 22px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
   width: 100%;
 }
 
@@ -540,28 +553,61 @@ code {
   border-left-color: var(--text-faint);
 }
 
-.segment-original {
+/* A labeled line inside a segment (original or translation). */
+.seg-line {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.line-tag {
+  align-self: flex-start;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 1px 7px;
+  border-radius: 999px;
+}
+
+.original-line .line-tag {
+  color: var(--text-faint);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-soft);
+}
+
+.line-text {
   font-size: 16px;
   line-height: 1.55;
 }
 
-.segment.partial .segment-original {
+.segment.partial .original-line .line-text {
   color: var(--text-dim);
   font-style: italic;
 }
 
-.segment.final .segment-original {
+.segment.final .original-line .line-text {
   color: var(--text);
 }
 
-.segment-translation {
-  margin-top: 5px;
-  font-size: 15px;
+/* Translation is a distinct tinted block so it reads clearly as "not the source". */
+.translation-line {
+  margin-top: 8px;
+  gap: 5px;
+  background: var(--accent-soft);
+  border-left: 2px solid var(--accent);
+  border-radius: 8px;
+  padding: 8px 11px;
+}
+
+.translation-line .line-tag {
   color: var(--accent);
-  line-height: 1.5;
-  padding-left: 2px;
-  border-top: 1px dashed var(--border-soft);
-  padding-top: 5px;
+  background: rgba(91, 140, 255, 0.16);
+}
+
+.translation-line .line-text {
+  color: var(--text);
+  font-size: 15.5px;
 }
 
 .placeholder {
@@ -805,8 +851,7 @@ code {
 }
 
 /* Preserve line breaks in speaker-diarized transcripts (A:/B: on separate lines). */
-.segment-original,
-.segment-translation,
+.line-text,
 .rec-transcript,
 .rec-translation {
   white-space: pre-wrap;

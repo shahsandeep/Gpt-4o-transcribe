@@ -219,7 +219,12 @@ export default function App() {
         </section>
 
         <section className="panel transcript-panel">
-          <TranscriptView segments={segments} translate={translate} />
+          <TranscriptView
+            segments={segments}
+            translate={translate}
+            inputLanguage={inputLanguage}
+            targetLanguage={targetLanguage}
+          />
         </section>
       </main>
 

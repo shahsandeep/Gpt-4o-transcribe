@@ -1,13 +1,26 @@
 import { useEffect, useRef } from 'react';
 import type { Segment } from '../types';
 import { speakerColor, speakerName } from '../lib/speakers';
+import { languageName } from '../lib/languages';
 
 interface TranscriptViewProps {
   segments: Segment[];
   translate: boolean;
+  inputLanguage: string;
+  targetLanguage: string;
 }
 
-export function TranscriptView({ segments, translate }: TranscriptViewProps) {
+export function TranscriptView({
+  segments,
+  translate,
+  inputLanguage,
+  targetLanguage,
+}: TranscriptViewProps) {
+  const originalTag =
+    inputLanguage && inputLanguage !== 'auto'
+      ? `Original · ${languageName(inputLanguage)}`
+      : 'Original';
+  const translatedTag = `Translated · ${languageName(targetLanguage)}`;
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -49,11 +62,17 @@ export function TranscriptView({ segments, translate }: TranscriptViewProps) {
                 {name}
               </span>
             )}
-            <div className="segment-original">
-              {s.original || <span className="placeholder">…</span>}
+            <div className="seg-line original-line">
+              <span className="line-tag">{originalTag}</span>
+              <div className="line-text">
+                {s.original || <span className="placeholder">…</span>}
+              </div>
             </div>
             {translate && s.translation != null && (
-              <div className="segment-translation">{s.translation}</div>
+              <div className="seg-line translation-line">
+                <span className="line-tag">{translatedTag}</span>
+                <div className="line-text">{s.translation}</div>
+              </div>
             )}
           </div>
         );
