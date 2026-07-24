@@ -1,3 +1,4 @@
+using TranscribeApi.Audio;
 using TranscribeApi.Config;
 using TranscribeApi.Realtime;
 
@@ -24,6 +25,7 @@ builder.Services.AddHttpClient("azure-transcribe", client =>
 });
 builder.Services.AddSingleton<TranslationService>();
 builder.Services.AddSingleton<RestTranscriptionService>();
+builder.Services.AddSingleton<AudioEnhancer>();
 
 // Permissive CORS so the frontend can connect from any origin.
 builder.Services.AddCors(options =>
@@ -56,6 +58,7 @@ app.MapPost("/rest/transcribe", async (HttpContext context) =>
     var options = context.RequestServices.GetRequiredService<AzureOptions>();
     var transcription = context.RequestServices.GetRequiredService<RestTranscriptionService>();
     var translation = context.RequestServices.GetRequiredService<TranslationService>();
+    var enhancer = context.RequestServices.GetRequiredService<AudioEnhancer>();
     var loggerFactory = context.RequestServices.GetRequiredService<ILoggerFactory>();
     var logger = loggerFactory.CreateLogger("RestTranscribe");
 
@@ -73,6 +76,8 @@ app.MapPost("/rest/transcribe", async (HttpContext context) =>
     var targetLanguage = form["targetLanguage"].ToString();
     var translateFlag = form["translate"].ToString();
     var translate = translateFlag.Trim().Equals("true", StringComparison.OrdinalIgnoreCase);
+    var enhanceFlag = form["enhance"].ToString();
+    var enhanceRequested = enhanceFlag.Trim().Equals("true", StringComparison.OrdinalIgnoreCase);
 
     byte[] audio;
     await using (var stream = file.OpenReadStream())
@@ -80,6 +85,14 @@ app.MapPost("/rest/transcribe", async (HttpContext context) =>
     {
         await stream.CopyToAsync(ms, context.RequestAborted);
         audio = ms.ToArray();
+    }
+
+    // Optional server-side ffmpeg enhancement before upload (graceful fallback).
+    var enhanced = false;
+    if (enhanceRequested)
+    {
+        (audio, enhanced) = await enhancer.EnhanceAsync(
+            audio, options.AudioEnhanceFilters, context.RequestAborted);
     }
 
     IReadOnlyList<TranscriptTurn> turns;
@@ -162,6 +175,7 @@ app.MapPost("/rest/transcribe", async (HttpContext context) =>
     {
         ["transcript"] = transcript,
         ["translation"] = string.IsNullOrEmpty(translationJoined) ? null : translationJoined,
+        ["enhanced"] = enhanced,
         ["segments"] = segments,
         ["transcribeMs"] = transcribeMs,
         ["translateMs"] = translateMs,

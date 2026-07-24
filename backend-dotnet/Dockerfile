@@ -14,6 +14,11 @@ RUN dotnet publish TranscribeApi.csproj -c Release -o /app --no-restore
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 WORKDIR /app
 
+# ffmpeg powers the optional server-side audio enhancement (REST mode).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=build /app ./
 
 ENV DOTNET_PORT=8080

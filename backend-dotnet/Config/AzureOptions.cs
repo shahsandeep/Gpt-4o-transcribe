@@ -53,6 +53,10 @@ public sealed class AzureOptions
     public int VadPrefixPaddingMs { get; init; } = 300;
     public int VadSilenceDurationMs { get; init; } = 500;
 
+    // --- Optional server-side ffmpeg audio enhancement (REST mode) ---
+    public string AudioEnhanceFilters { get; init; } =
+        "highpass=f=80,afftdn=nf=-25,loudnorm=I=-16:TP=-1.5:LRA=11";
+
     // --- Server ---
     public int Port { get; init; } = 8080;
 
@@ -78,6 +82,10 @@ public sealed class AzureOptions
             VadThreshold = EnvDouble("VAD_THRESHOLD", 0.5),
             VadPrefixPaddingMs = EnvInt("VAD_PREFIX_PADDING_MS", 300),
             VadSilenceDurationMs = EnvInt("VAD_SILENCE_DURATION_MS", 500),
+
+            AudioEnhanceFilters = Env(
+                "AUDIO_ENHANCE_FILTERS",
+                "highpass=f=80,afftdn=nf=-25,loudnorm=I=-16:TP=-1.5:LRA=11"),
 
             Port = EnvInt("DOTNET_PORT", 8080),
         };
