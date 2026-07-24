@@ -103,6 +103,14 @@ plays the **original** vs the **ffmpeg-enhanced** audio side by side (with a dow
 for the enhanced WAV), so you can hear exactly what the filter chain is doing before
 trusting it for transcription.
 
+**Diff enhance** goes one step further and quantifies the *transcription* impact: it
+transcribes the same clip twice (enhancement off, then on — translation skipped) and
+shows the two transcripts side by side with a word-level diff (`src/lib/diff.ts`,
+LCS-based), plus a "N of M words differ" summary and each run's timing. Removed words
+(only in the un-enhanced run) are struck through on the left; added words (only in the
+enhanced run) are highlighted on the right. If ffmpeg isn't installed, it says so
+(the two runs would be identical).
+
 ## Speaker diarization
 
 With a diarize deployment (`AZURE_TRANSCRIBE_RESPONSE_FORMAT=diarized_json`), the REST

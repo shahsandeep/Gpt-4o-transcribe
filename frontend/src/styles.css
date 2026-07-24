@@ -935,3 +935,45 @@ code {
 .ab-download:hover {
   color: var(--accent);
 }
+
+/* --------------------------------------------------------------- diff view */
+
+.diff-summary {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
+
+.diff-summary strong {
+  color: var(--text);
+}
+
+.diff-times {
+  color: var(--text-faint);
+}
+
+.diff-note {
+  color: var(--amber);
+}
+
+.diff-text {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.diff-removed {
+  background: var(--red-soft);
+  color: #ffb3ba;
+  border-radius: 3px;
+  padding: 0 2px;
+  text-decoration: line-through;
+}
+
+.diff-added {
+  background: var(--green-soft);
+  color: #9be7bd;
+  border-radius: 3px;
+  padding: 0 2px;
+}

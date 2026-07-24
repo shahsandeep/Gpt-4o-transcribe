@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Backend } from '../lib/backends';
 import { postEnhance, postTranscribe, type RestSegment } from '../lib/rest';
+import { diffWords, diffStats, type DiffToken } from '../lib/diff';
 import { speakerColor, speakerName } from '../lib/speakers';
 import { languageName } from '../lib/languages';
 import {
@@ -35,6 +36,15 @@ interface RowCompare {
   error?: string;
 }
 
+interface RowDiff {
+  loading?: boolean;
+  tokens?: DiffToken[];
+  baseMs?: number;
+  enhMs?: number;
+  notEnhanced?: boolean;
+  error?: string;
+}
+
 function fmtDuration(ms: number): string {
   const s = Math.round(ms / 1000);
   const m = Math.floor(s / 60);
@@ -61,6 +71,7 @@ export function Recordings({
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, RowResult>>({});
   const [compares, setCompares] = useState<Record<string, RowCompare>>({});
+  const [diffs, setDiffs] = useState<Record<string, RowDiff>>({});
   const urlRef = useRef<string | null>(null);
   // Object URLs for the A/B players, tracked per recording so we can revoke them.
   const compareUrls = useRef<Map<string, { orig: string; enh: string }>>(new Map());
@@ -175,6 +186,52 @@ export function Recordings({
     [backend, revokeCompare],
   );
 
+  const diffTranscripts = useCallback(
+    async (id: string) => {
+      const rec = await getRecording(id);
+      if (!rec) return;
+      setDiffs((prev) => ({ ...prev, [id]: { loading: true } }));
+      try {
+        // Same audio, transcription only (no translation), enhance off vs on.
+        const [base, enh] = await Promise.all([
+          postTranscribe(backend, {
+            blob: rec.blob,
+            fileName: `${rec.name}.wav`,
+            inputLanguage,
+            targetLanguage,
+            translate: false,
+            enhance: false,
+          }),
+          postTranscribe(backend, {
+            blob: rec.blob,
+            fileName: `${rec.name}.wav`,
+            inputLanguage,
+            targetLanguage,
+            translate: false,
+            enhance: true,
+          }),
+        ]);
+        const baseText = base.segments.map((s) => s.text).join(' ').trim() || base.transcript;
+        const enhText = enh.segments.map((s) => s.text).join(' ').trim() || enh.transcript;
+        setDiffs((prev) => ({
+          ...prev,
+          [id]: {
+            tokens: diffWords(baseText, enhText),
+            baseMs: base.transcribeMs,
+            enhMs: enh.transcribeMs,
+            notEnhanced: !enh.enhanced,
+          },
+        }));
+      } catch (e) {
+        setDiffs((prev) => ({
+          ...prev,
+          [id]: { error: e instanceof Error ? e.message : 'Diff failed.' },
+        }));
+      }
+    },
+    [backend, inputLanguage, targetLanguage],
+  );
+
   const remove = useCallback(
     async (id: string) => {
       if (playingId === id) {
@@ -190,6 +247,11 @@ export function Recordings({
         return next;
       });
       setCompares((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      setDiffs((prev) => {
         const next = { ...prev };
         delete next[id];
         return next;
@@ -224,6 +286,7 @@ export function Recordings({
         {recordings.map((r) => {
           const res = results[r.id];
           const cmp = compares[r.id];
+          const dff = diffs[r.id];
           return (
             <li key={r.id} className={`rec-item ${playingId === r.id ? 'playing' : ''}`}>
               <div className="rec-head">
@@ -258,6 +321,15 @@ export function Recordings({
                     title="Play original vs ffmpeg-enhanced audio side by side"
                   >
                     {cmp?.loading ? '…' : '🎧 Compare A/B'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn ghost small"
+                    onClick={() => diffTranscripts(r.id)}
+                    disabled={dff?.loading}
+                    title="Transcribe with and without enhancement and diff the words"
+                  >
+                    {dff?.loading ? '…' : '⇄ Diff enhance'}
                   </button>
                   <button
                     type="button"
@@ -346,6 +418,67 @@ export function Recordings({
                         </a>
                       </div>
                     </div>
+                  )}
+                </div>
+              )}
+              {dff && !dff.loading && (dff.error || dff.tokens) && (
+                <div className="rec-compare">
+                  {dff.error && <div className="rec-error">{dff.error}</div>}
+                  {dff.tokens && (
+                    <>
+                      {(() => {
+                        const stats = diffStats(dff.tokens!);
+                        return (
+                          <div className="diff-summary">
+                            {dff.notEnhanced ? (
+                              <span className="diff-note">
+                                Enhancement did not run (ffmpeg missing) — transcripts are identical.
+                              </span>
+                            ) : (
+                              <>
+                                <strong>{stats.changed}</strong> of {stats.total} words differ (
+                                {stats.pct}%){' '}
+                                <span className="diff-times">
+                                  · {dff.baseMs} ms vs {dff.enhMs} ms
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        );
+                      })()}
+                      <div className="ab-grid">
+                        <div className="ab-side">
+                          <span className="line-tag ab-tag-orig">No enhancement</span>
+                          <p className="diff-text">
+                            {dff.tokens
+                              .filter((t) => t.type !== 'added')
+                              .map((t, i) => (
+                                <span
+                                  key={i}
+                                  className={t.type === 'removed' ? 'diff-removed' : undefined}
+                                >
+                                  {t.text}{' '}
+                                </span>
+                              ))}
+                          </p>
+                        </div>
+                        <div className="ab-side">
+                          <span className="line-tag ab-tag-enh">Enhanced (ffmpeg)</span>
+                          <p className="diff-text">
+                            {dff.tokens
+                              .filter((t) => t.type !== 'removed')
+                              .map((t, i) => (
+                                <span
+                                  key={i}
+                                  className={t.type === 'added' ? 'diff-added' : undefined}
+                                >
+                                  {t.text}{' '}
+                                </span>
+                              ))}
+                          </p>
+                        </div>
+                      </div>
+                    </>
                   )}
                 </div>
               )}
